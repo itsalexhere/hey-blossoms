@@ -1,0 +1,19 @@
+{
+  "name": "@luxe/scraper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "luxe-scrape": "./bin/scrape.mjs"
+  },
+  "scripts": {
+    "scrape": "node bin/scrape.mjs"
+  },
+  "dependencies": {
+    "@luxe/shared": "*",
+    "cheerio": "^1.2.0",
+    "puppeteer": "^25.0.4",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@luxe/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./vip-config": "./src/vip-config.js",
+    "./product-taxonomy": "./src/product-taxonomy.js",
+    "./category-seed": "./src/category-seed.js",
+    "./currency": "./src/currency.js",
+    "./db": "./src/db.js",
+    "./supabase": "./src/supabase.js",
+    "./scrape-targets": "./src/scrape-targets.js",
+    "./orders": "./src/orders.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2"
+  }
+}

@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+/.pnp
+.pnp.*
+.yarn/
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+coverage/
+
+# next.js build output
+.next/
+out/
+
+# production
+build/
+
+# cache
+**/.next/cache/
+apps/**/.next/
+
+# misc
+.DS_Store
+*.pem
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# vercel
+.vercel/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# env (BEST PRACTICE: jangan push secret)
+.env
+.env.local
+.env.development
+.env.production
+
+# optional (kalau mau template env tetap disimpan)
+!.env.example

@@ -1,0 +1,17 @@
+{
+  "name": "js_scraper",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @luxe/web",
+    "build": "npm run build -w @luxe/web",
+    "start": "npm run start -w @luxe/web",
+    "lint": "npm run lint -w @luxe/web",
+    "scrape": "npm run scrape -w @luxe/scraper"
+  }
+}
