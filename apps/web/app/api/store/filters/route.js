@@ -6,6 +6,7 @@ import {
     getStoreSources,
     getStoreBranding,
     getSourceLabels,
+    getWhatsAppSettings,
     PRICE_BUCKETS,
 } from '@/lib/storefront';
 
@@ -13,13 +14,14 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        const [categoryGroups, categories, brands, sources, branding, sourceLabels] = await Promise.all([
+        const [categoryGroups, categories, brands, sources, branding, sourceLabels, whatsapp] = await Promise.all([
             getStoreCategoryGroups(),
             getStoreCategories(),
             getStoreBrands(),
             Promise.resolve(getStoreSources()),
             getStoreBranding(),
             getSourceLabels(),
+            getWhatsAppSettings(),
         ]);
         return NextResponse.json({
             success: true,
@@ -29,6 +31,7 @@ export async function GET() {
             sources,
             branding,
             sourceLabels,
+            whatsapp,
             priceBuckets: PRICE_BUCKETS,
         });
     } catch (error) {

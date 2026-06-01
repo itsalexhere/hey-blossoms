@@ -1,5 +1,6 @@
 import { BaseScraper } from './base.js';
 import { inferCategoryFromTitle } from '@luxe/shared/product-taxonomy';
+import { extractPdpFromPage } from '../lib/pdp-extract.js';
 
 /** ZetaBags shop filter IDs → gender (from fill-gender query param). */
 const ZETABAGS_GENDER_FILLS = {
@@ -66,25 +67,66 @@ export class ZetabagsScraper extends BaseScraper {
         this._ctx = this._resolveContext(url);
         console.log(`[ZetaBags] Context: gender=${this._ctx.gender || '-'} brand=${this._ctx.brand || '-'}`);
 
+        let products = [];
+
         if (this._isFilteredShopUrl(url)) {
             console.log('[ZetaBags] Filtered shop URL — slow scroll HTML scrape (bukan pagination HuntStreet)');
-            return this._scrapeFilteredShop(url);
-        }
-
-        // Try WooCommerce Store API first (full catalog only)
-        try {
-            console.log('[ZetaBags] Trying WooCommerce Store API...');
-            const products = await this._scrapeViaWcApi();
-            if (products.length > 0) {
-                console.log(`[ZetaBags] API success! ${products.length} products found.`);
-                return products;
+            products = await this._scrapeFilteredShop(url);
+        } else {
+            // Try WooCommerce Store API first (full catalog only)
+            try {
+                console.log('[ZetaBags] Trying WooCommerce Store API...');
+                products = await this._scrapeViaWcApi();
+                if (products.length > 0) {
+                    console.log(`[ZetaBags] API success! ${products.length} products found.`);
+                }
+            } catch (e) {
+                console.log(`[ZetaBags] WC API failed: ${e.message}. Falling back to HTML scraping.`);
             }
-        } catch (e) {
-            console.log(`[ZetaBags] WC API failed: ${e.message}. Falling back to HTML scraping.`);
+
+            if (products.length === 0) {
+                products = await this._scrapeViaHtml(url);
+            }
         }
 
-        // Fallback: Puppeteer HTML scraping
-        return this._scrapeViaHtml(url);
+        return await this.enrichProducts(products);
+    }
+
+    async enrichFromDetailPage(product) {
+        const slug = product.product_url?.match(/\/product\/([^/?#]+)/)?.[1];
+        if (slug) {
+            try {
+                const apiUrl = `${this.getBaseUrl()}/wp-json/wc/store/v1/products?slug=${encodeURIComponent(slug)}`;
+                const response = await fetch(apiUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        Accept: 'application/json',
+                    },
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    const item = Array.isArray(data) ? data[0] : null;
+                    if (item) {
+                        const images = this._dedupeImages(
+                            (item.images || []).map((img) => img.src),
+                            this.getBaseUrl()
+                        );
+                        const description = this._stripHtml(item.short_description || item.description || '');
+                        if (images.length || description) return { images, description };
+                    }
+                }
+            } catch (e) {
+                console.warn(`[ZetaBags] API detail failed for ${slug}: ${e.message}`);
+            }
+        }
+
+        if (!this.page) await this.launchBrowser();
+        await this.navigateWithRetry(product.product_url, { waitAfter: 2000, waitUntil: 'domcontentloaded' });
+        const detail = await extractPdpFromPage(this.page, this.getBaseUrl(), 'woocommerce');
+        return {
+            images: this._dedupeImages(detail.images, this.getBaseUrl()),
+            description: detail.description,
+        };
     }
 
     /**
@@ -163,10 +205,12 @@ export class ZetabagsScraper extends BaseScraper {
         // Stock status
         const stockStatus = product.is_in_stock ? 'available' : 'sold_out';
 
-        // Image
-        const imageUrl = product.images && product.images[0]
-            ? product.images[0].src
-            : null;
+        // Images — all gallery photos from WC API
+        const images = this._dedupeImages(
+            (product.images || []).map((img) => img.src),
+            this.getBaseUrl()
+        );
+        const imageUrl = images[0] || null;
 
         // Brand (from brands field)
         let brand = null;
@@ -193,6 +237,7 @@ export class ZetabagsScraper extends BaseScraper {
             stock_status: stockStatus,
             stock_qty: product.low_stock_remaining || null,
             image_url: imageUrl,
+            images,
             product_url: product.permalink || `${this.getBaseUrl()}/product/${product.slug}/`,
             description: this._stripHtml(product.short_description || product.description || ''),
         };
@@ -502,10 +547,5 @@ export class ZetabagsScraper extends BaseScraper {
             return parseInt(cleaned.replace(/,/g, '')) || 0;
         }
         return parseInt(cleaned) || 0;
-    }
-
-    _stripHtml(html) {
-        if (!html) return null;
-        return html.replace(/<[^>]*>/g, '').trim().substring(0, 500);
     }
 }

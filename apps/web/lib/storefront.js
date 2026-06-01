@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@luxe/shared/supabase';
+import { computeSellingPrice, applyMarkup } from '@luxe/shared/pricing';
 import { VIP_SOURCES, VIP_BRANDS, VIP_LEAF_SLUGS, buildStoreCategoryGroups } from '@luxe/shared/vip-config';
 
 // ============================================================
@@ -19,7 +20,7 @@ async function hasGenderColumn(supabase) {
 }
 
 const STORE_PRODUCT_SELECT =
-    'id, title, source, stock_status, stock_qty, original_price, scraped_at, brands(name), categories(id, name, slug), product_images(image_url, position)';
+    'id, title, source, description, stock_status, stock_qty, original_price, markup_addon_idr, scraped_at, brands(name), categories(id, name, slug), product_images(image_url, position)';
 
 async function storeProductSelect(supabase) {
     if (await hasGenderColumn(supabase)) {
@@ -27,6 +28,8 @@ async function storeProductSelect(supabase) {
     }
     return STORE_PRODUCT_SELECT;
 }
+
+export { applyMarkup, computeSellingPrice } from '@luxe/shared/pricing';
 
 export async function getMarkupPercent() {
     // cache for 30s to avoid a settings read on every request
@@ -40,9 +43,33 @@ export async function getMarkupPercent() {
     return pct;
 }
 
-export function applyMarkup(originalPrice, markupPercent) {
-    const base = Number(originalPrice || 0);
-    return Math.round(base * (1 + Number(markupPercent || 0) / 100));
+function upgradeStoreImageUrl(url) {
+    if (!url) return null;
+    if (url.includes('img.huntstreet.com/uploads/product/images/')) {
+        return url.replace(/\/(thumb|medium)\//, '/large/');
+    }
+    return url;
+}
+
+function mapStoreProduct(p, markup) {
+    const images = (p.product_images || []).sort((a, b) => a.position - b.position);
+    const imageUrls = images.map((i) => upgradeStoreImageUrl(i.image_url)).filter(Boolean);
+    return {
+        id: p.id,
+        title: p.title,
+        brand: p.brands?.name || null,
+        category: p.categories?.name || null,
+        category_slug: p.categories?.slug || null,
+        gender: p.gender || null,
+        selling_price: computeSellingPrice(p.original_price, markup, p.markup_addon_idr),
+        stock_status: p.stock_status,
+        stock_qty: p.stock_qty,
+        image_url: imageUrls[0] || null,
+        images: imageUrls,
+        description: p.description || null,
+        source: p.source,
+        scraped_at: p.scraped_at,
+    };
 }
 
 /** Selling-price presets for VIP filter UI (values in IDR). */
@@ -68,24 +95,6 @@ async function resolveCategoryIds(supabase, slug) {
     const { data: children } = await supabase.from('categories').select('id').eq('parent_id', cat.id);
     for (const c of children || []) ids.push(c.id);
     return ids;
-}
-
-function mapStoreProduct(p, markup) {
-    const images = (p.product_images || []).sort((a, b) => a.position - b.position);
-    return {
-        id: p.id,
-        title: p.title,
-        brand: p.brands?.name || null,
-        category: p.categories?.name || null,
-        category_slug: p.categories?.slug || null,
-        gender: p.gender || null,
-        selling_price: applyMarkup(p.original_price, markup),
-        stock_status: p.stock_status,
-        stock_qty: p.stock_qty,
-        image_url: images[0]?.image_url || null,
-        source: p.source,
-        scraped_at: p.scraped_at,
-    };
 }
 
 /**
@@ -114,6 +123,21 @@ export async function getStoreBranding() {
     return {
         store_name: map.store_name || 'LUXE',
         store_logo_url: map.store_logo_url || '',
+    };
+}
+
+/** WhatsApp contact for floating button. */
+export async function getWhatsAppSettings() {
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', ['whatsapp_number', 'whatsapp_message']);
+    const map = {};
+    (data || []).forEach((r) => (map[r.key] = r.value));
+    return {
+        whatsapp_number: (map.whatsapp_number || '').replace(/\D/g, ''),
+        whatsapp_message: map.whatsapp_message || 'Halo, saya tertarik dengan produk di toko Anda.',
     };
 }
 
@@ -197,7 +221,7 @@ export async function getStoreProduct(id) {
     const { data, error } = await supabase
         .from('products')
         .select(
-            'id, title, source, source_url, description, stock_status, stock_qty, original_price, scraped_at, brands(name), categories(name, slug), product_images(image_url, position)'
+            'id, title, source, source_url, description, stock_status, stock_qty, original_price, markup_addon_idr, scraped_at, brands(name), categories(name, slug), product_images(image_url, position)'
         )
         .eq('id', id)
         .maybeSingle();
@@ -206,6 +230,7 @@ export async function getStoreProduct(id) {
     if (!data) return null;
 
     const images = (data.product_images || []).sort((a, b) => a.position - b.position);
+    const imageUrls = images.map((i) => upgradeStoreImageUrl(i.image_url)).filter(Boolean);
     return {
         id: data.id,
         title: data.title,
@@ -213,11 +238,11 @@ export async function getStoreProduct(id) {
         category: data.categories?.name || null,
         category_slug: data.categories?.slug || null,
         description: data.description,
-        selling_price: applyMarkup(data.original_price, markup),
+        selling_price: computeSellingPrice(data.original_price, markup, data.markup_addon_idr),
         stock_status: data.stock_status,
         stock_qty: data.stock_qty,
-        images: images.map((i) => i.image_url),
-        image_url: images[0]?.image_url || null,
+        images: imageUrls,
+        image_url: imageUrls[0] || null,
         source: data.source,
     };
 }

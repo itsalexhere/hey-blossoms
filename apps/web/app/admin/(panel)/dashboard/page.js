@@ -18,11 +18,11 @@ export default function DashboardPage() {
 
     const s = data.stats;
     const cards = [
-        { label: 'Total Produk', value: s.totalProducts.toLocaleString('id-ID'), icon: '▤' },
-        { label: 'Produk Aktif', value: s.activeProducts.toLocaleString('id-ID'), icon: '✓' },
-        { label: 'Stok Habis', value: s.soldOut.toLocaleString('id-ID'), icon: '✕', accent: AC.danger },
-        { label: 'Brand', value: s.brands.toLocaleString('id-ID'), icon: '◈' },
-        { label: 'Kategori', value: s.categories.toLocaleString('id-ID'), icon: '◳' },
+        { label: 'Total Produk', value: s.totalProducts.toLocaleString('id-ID'), icon: '▤', accent: AC.pink },
+        { label: 'Produk Aktif', value: s.activeProducts.toLocaleString('id-ID'), icon: '✓', accent: AC.pink },
+        { label: 'Stok Habis', value: s.soldOut.toLocaleString('id-ID'), icon: '✕', accent: AC.pinkSoft },
+        { label: 'Brand', value: s.brands.toLocaleString('id-ID'), icon: '◈', accent: AC.pink },
+        { label: 'Kategori', value: s.categories.toLocaleString('id-ID'), icon: '◳', accent: AC.pink },
     ];
 
     return (
@@ -44,9 +44,9 @@ export default function DashboardPage() {
                     <div style={{ color: AC.muted, fontSize: '0.85rem', marginBottom: 6 }}>Nilai Inventaris (Harga Asli)</div>
                     <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>{formatIDR(s.inventoryOriginal)}</div>
                 </Card>
-                <Card style={{ borderColor: AC.gold }}>
+                <Card style={{ borderColor: AC.pink }}>
                     <div style={{ color: AC.muted, fontSize: '0.85rem', marginBottom: 6 }}>Nilai Jual (Setelah Markup {s.markup}%)</div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: 700, color: AC.gold }}>{formatIDR(s.inventorySelling)}</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 700, color: AC.blue }}>{formatIDR(s.inventorySelling)}</div>
                 </Card>
             </div>
 

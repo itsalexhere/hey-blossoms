@@ -5,6 +5,7 @@ import {
     mapBanananinaListingCategory,
     parseBanananinaUrl,
 } from '@luxe/shared/product-taxonomy';
+import { extractPdpFromPage } from '../lib/pdp-extract.js';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 puppeteer.use(StealthPlugin());
@@ -191,9 +192,33 @@ export class BanananinaScraper extends BaseScraper {
             const women = allProducts.filter((p) => p.gender === 'women').length;
             console.log(`[Banananina] Gender summary: ${men} men, ${women} women, ${allProducts.length - men - women} unknown`);
 
+            this.browser = browser;
+            await this.enrichProducts(allProducts);
+
             return allProducts;
         } finally {
             await browser.close().catch(() => {});
+            this.browser = null;
+        }
+    }
+
+    async enrichFromDetailPage(product) {
+        const tab = await this.browser.newPage();
+        try {
+            await tab.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+            await tab.setExtraHTTPHeaders({ 'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7' });
+            await tab.goto(product.product_url, { waitUntil: 'networkidle2', timeout: 45000 });
+            await tab.waitForSelector('.box-gallery-description, script[type="application/ld+json"]', { timeout: 15000 }).catch(() => {});
+            await new Promise((r) => setTimeout(r, 1000));
+            const detail = await extractPdpFromPage(tab, this.getBaseUrl(), 'banananina');
+            return {
+                images: this._dedupeImages(detail.images, this.getBaseUrl()),
+                description: detail.description,
+                price: detail.price,
+                stock_status: detail.stock_status,
+            };
+        } finally {
+            await tab.close().catch(() => {});
         }
     }
 
@@ -204,72 +229,72 @@ export class BanananinaScraper extends BaseScraper {
     async _extractFromPage(page, pageUrl) {
         const baseUrl = this.getBaseUrl();
 
-        return page.evaluate((baseUrl, pageUrl) => {
-            const results = [];
+        return page.evaluate((baseUrl) => {
+            const parseIdr = (text) => {
+                if (!text) return 0;
+                const m = String(text).match(/IDR\.?\s*([\d.,]+)/i);
+                if (m) return parseInt(m[1].replace(/\./g, '').replace(/,/g, ''), 10) || 0;
+                return parseInt(String(text).replace(/[^\d]/g, ''), 10) || 0;
+            };
 
-            // Strategy 1: JSON data layer script tag
+            const results = [];
+            const jsonByTitle = new Map();
+
             const scriptEl = document.querySelector('script#catalogue-data-layer');
-            const jsonItems = [];
             if (scriptEl) {
                 try {
                     const data = JSON.parse(scriptEl.textContent);
                     const raw = Array.isArray(data) ? data : (data.items || data.ecommerce?.impressions || []);
-                    raw.forEach(item => jsonItems.push({
-                        title: item.item_name || item.name || null,
-                        price: parseFloat(item.price) || 0,
-                        category: item.item_category || item.category || null,
-                        category2: item.item_category2 || null,
-                        catalogueCategory: item.item_category || null,
-                        brand: item.item_brand || item.brand || null,
-                    }));
-                } catch {}
+                    raw.forEach((item) => {
+                        const title = item.item_name || item.name || null;
+                        if (!title) return;
+                        jsonByTitle.set(title.toLowerCase().trim(), {
+                            title,
+                            price: parseFloat(item.price) || parseIdr(String(item.price || '')),
+                            category: item.item_category || item.category || null,
+                            category2: item.item_category2 || null,
+                            catalogueCategory: item.item_category || null,
+                            brand: item.item_brand || item.brand || null,
+                        });
+                    });
+                } catch { /* ignore */ }
             }
 
-            // Strategy 2: HTML product cards
-            const htmlItems = [];
-            const cards = document.querySelectorAll('a.text-secondary.position-relative');
-            cards.forEach(card => {
+            document.querySelectorAll('a.text-secondary.position-relative').forEach((card) => {
                 const titleEl = card.querySelector('.product-name, .product-title, p, span');
                 const title = titleEl?.textContent?.trim() || '';
-                const priceEl = card.querySelector('.price, [class*="price"]');
-                const priceText = priceEl?.textContent?.trim() || '';
-                const price = parseInt(priceText.replace(/[^\d]/g, '')) || 0;
-                const img = card.querySelector('img');
-                const imgUrl = img?.getAttribute('data-src') || img?.getAttribute('src') || null;
+                if (!title) return;
+
                 let link = card.getAttribute('href') || '';
                 if (link && !link.startsWith('http')) link = baseUrl + link;
 
-                if (title) {
-                    htmlItems.push({ title, price, image: imgUrl, link, catalogueCategory: null, category2: null });
-                }
-            });
+                const cardText = card.textContent || '';
+                const priceFromCard = parseIdr(cardText);
+                const img = card.querySelector('img');
+                const imgUrl = img?.getAttribute('data-src') || img?.getAttribute('src') || null;
 
-            // Merge JSON (title/price) + HTML (image/link)
-            const count = Math.max(jsonItems.length, htmlItems.length);
-            for (let i = 0; i < count; i++) {
-                const j = jsonItems[i] || {};
-                const h = htmlItems[i] || {};
-                const title = j.title || h.title;
-                if (!title) continue;
+                const j = jsonByTitle.get(title.toLowerCase().trim()) || {};
+                const price = j.price || priceFromCard || 0;
+
                 results.push({
                     title,
-                    brand: j.brand || h.brand || null,
+                    brand: j.brand || null,
                     category: j.category || null,
-                    category2: j.category2 || h.category2 || null,
-                    catalogueCategory: j.catalogueCategory || h.catalogueCategory || null,
-                    price_original: j.price || h.price || 0,
+                    category2: j.category2 || null,
+                    catalogueCategory: j.catalogueCategory || null,
+                    price_original: price,
                     currency: 'IDR',
-                    price_idr: j.price || h.price || 0,
-                    stock_status: (j.price || h.price) > 0 ? 'available' : 'sold_out',
+                    price_idr: price,
+                    stock_status: price > 0 ? 'available' : 'sold_out',
                     stock_qty: null,
-                    image_url: h.image || null,
-                    product_url: h.link || pageUrl,
+                    image_url: imgUrl,
+                    product_url: link || null,
                     description: null,
                 });
-            }
+            });
 
             return results;
-        }, baseUrl, pageUrl);
+        }, baseUrl);
     }
 
     /**

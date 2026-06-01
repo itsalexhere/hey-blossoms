@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { getWishlist, toggleWishlist } from '@/lib/wishlist';
 import { getCart, getCartCount, addToCart, updateCartQty, removeFromCart, clearCart } from '@/lib/cart';
+import ProductGallery from './ProductGallery';
 
 const PAGE = 24;
 
@@ -36,9 +37,11 @@ export default function Storefront() {
     const [priceDraftMin, setPriceDraftMin] = useState('');
     const [priceDraftMax, setPriceDraftMax] = useState('');
     const [priceFilterError, setPriceFilterError] = useState('');
-    const [storeSort, setStoreSort] = useState('newest');
+    const [storeSort, setStoreSort] = useState('price_asc');
 
     const [selectedProduct, setSelectedProduct] = useState(null);
+    const [productDetail, setProductDetail] = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
     const [showWishlist, setShowWishlist] = useState(false);
     const [wishlistProducts, setWishlistProducts] = useState([]);
     const [showCart, setShowCart] = useState(false);
@@ -119,6 +122,23 @@ export default function Storefront() {
             })
             .catch(() => {});
     }, [showWishlist, wishlistIds]);
+
+    useEffect(() => {
+        if (!selectedProduct?.id) {
+            setProductDetail(null);
+            setDetailLoading(false);
+            return;
+        }
+        setDetailLoading(true);
+        setProductDetail(null);
+        fetch(`/api/store/products/${selectedProduct.id}`)
+            .then((r) => r.json())
+            .then((d) => {
+                if (d.success) setProductDetail(d.product);
+            })
+            .catch(() => {})
+            .finally(() => setDetailLoading(false));
+    }, [selectedProduct?.id]);
 
     const onFilter = (setter) => (value) => {
         setPage(0);
@@ -308,39 +328,38 @@ export default function Storefront() {
                     )}
                 </div>
                 <div className="nav-links">
-                    <a href="#" className="active" onClick={(e) => e.preventDefault()}>
+                    <a href="#" className="active nav-link-desktop" onClick={(e) => e.preventDefault()}>
                         Boutique Storefront
                     </a>
                     <a
                         href="#"
+                        className="nav-action"
                         onClick={(e) => {
                             e.preventDefault();
                             setShowWishlist(true);
                         }}
                     >
-                        Wishlist ({wishlistIds.length})
+                        <span className="nav-action-icon" aria-hidden="true">{'\u2661'}</span>
+                        <span className="nav-action-text">Wishlist</span>
+                        <span className="nav-action-count">({wishlistIds.length})</span>
                     </a>
                     <a
                         href="#"
+                        className="nav-action"
                         onClick={(e) => {
                             e.preventDefault();
                             openCart('cart');
                         }}
                     >
-                        Keranjang ({cartCount})
+                        <span className="nav-action-icon" aria-hidden="true">{'\u{1F6D2}'}</span>
+                        <span className="nav-action-text">Keranjang</span>
+                        <span className="nav-action-count">({cartCount})</span>
                     </a>
                 </div>
             </nav>
 
-            <div style={{ marginTop: '10px' }}>
-                <header className="minimal-hero">
-                    <div className="hero-content">
-                        <h1>Curated Luxury Boutique.</h1>
-                        <p>The finest selection of premium luxury bags & accessories, hand-picked from international boutiques.</p>
-                    </div>
-                </header>
-
-                <section className="catalog-section">
+            <div className="storefront-body">
+                <section className="catalog-section catalog-section--no-hero">
                     <div className="storefront-filters">
                         <div className="filters-left">
                             <input
@@ -690,9 +709,9 @@ export default function Storefront() {
                 )}
 
                 {selectedProduct && (
-                    <div className="modal-overlay" onClick={() => setSelectedProduct(null)}>
+                    <div className="modal-overlay" onClick={() => { setSelectedProduct(null); setProductDetail(null); }}>
                         <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                            <button className="modal-close-btn" onClick={() => setSelectedProduct(null)}>
+                            <button className="modal-close-btn" onClick={() => { setSelectedProduct(null); setProductDetail(null); }}>
                                 {'\u2715'}
                             </button>
 
@@ -700,18 +719,25 @@ export default function Storefront() {
                                 {selectedProduct.source && (
                                     <span
                                         className={`card-site-tag site-badge ${selectedProduct.source.toLowerCase()}`}
-                                        style={{ top: '25px', left: '25px', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                                        style={{ top: '25px', left: '25px', fontSize: '0.8rem', padding: '0.4rem 0.8rem', zIndex: 2 }}
                                     >
                                         {sourceLabels[selectedProduct.source] || selectedProduct.source}
                                     </span>
                                 )}
-                                <img
-                                    src={selectedProduct.image_url || 'https://via.placeholder.com/500x500/f5f5f5/cccccc?text=No+Image'}
-                                    alt={selectedProduct.title}
-                                    onError={(e) => {
-                                        e.target.src = 'https://via.placeholder.com/500x500/f5f5f5/cccccc?text=No+Image';
-                                    }}
-                                />
+                                {detailLoading ? (
+                                    <div className="modal-gallery-loading">Memuat foto...</div>
+                                ) : (
+                                    <ProductGallery
+                                        images={
+                                            productDetail?.images?.length
+                                                ? productDetail.images
+                                                : (selectedProduct.images?.length
+                                                    ? selectedProduct.images
+                                                    : (selectedProduct.image_url ? [selectedProduct.image_url] : []))
+                                        }
+                                        title={selectedProduct.title}
+                                    />
+                                )}
                             </div>
 
                             <div className="modal-info-sec">
@@ -740,6 +766,15 @@ export default function Storefront() {
                                         </div>
                                     </div>
 
+                                    {(productDetail?.description || selectedProduct.description) && (
+                                        <div className="modal-description">
+                                            <div className="modal-description-label">Deskripsi</div>
+                                            <p style={{ whiteSpace: 'pre-line', margin: 0, lineHeight: 1.65, color: 'var(--text-muted)', fontSize: '0.92rem' }}>
+                                                {productDetail?.description || selectedProduct.description}
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div className="modal-price-box">
                                         <div className="modal-price-label">Catalog Price</div>
                                         <div className="modal-price-value">{formatPrice(selectedProduct.selling_price)}</div>
@@ -762,13 +797,6 @@ export default function Storefront() {
                                         onClick={() => addProductToCart(null, selectedProduct.id)}
                                     >
                                         Tambah ke Keranjang
-                                    </button>
-                                    <button
-                                        className="btn btn-secondary"
-                                        onClick={() => setSelectedProduct(null)}
-                                        style={{ paddingLeft: '1.5rem', paddingRight: '1.5rem' }}
-                                    >
-                                        Tutup
                                     </button>
                                     <button
                                         type="button"

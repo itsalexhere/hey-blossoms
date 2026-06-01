@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentAdmin } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@luxe/shared/supabase';
-import { getMarkupPercent, applyMarkup } from '@/lib/storefront';
+import { getMarkupPercent, computeSellingPrice } from '@/lib/storefront';
 import { hasGenderColumn } from '@luxe/shared/db';
 
 export const dynamic = 'force-dynamic';
@@ -29,8 +29,8 @@ export async function GET(request) {
         const genderSupported = await hasGenderColumn(supabase);
 
         const productFields = genderSupported
-            ? 'id, source, source_url, title, gender, original_price, currency, stock_status, stock_qty, is_active, scraped_at, created_at, updated_at, brands(id,name), categories(id,name), product_images(image_url, position)'
-            : 'id, source, source_url, title, original_price, currency, stock_status, stock_qty, is_active, scraped_at, created_at, updated_at, brands(id,name), categories(id,name), product_images(image_url, position)';
+            ? 'id, source, source_url, title, gender, original_price, markup_addon_idr, currency, stock_status, stock_qty, is_active, scraped_at, created_at, updated_at, brands(id,name), categories(id,name), product_images(image_url, position)'
+            : 'id, source, source_url, title, original_price, markup_addon_idr, currency, stock_status, stock_qty, is_active, scraped_at, created_at, updated_at, brands(id,name), categories(id,name), product_images(image_url, position)';
 
         let q = supabase
             .from('products')
@@ -69,7 +69,8 @@ export async function GET(request) {
                 category: p.categories?.name || null,
                 gender: genderSupported ? (p.gender || null) : null,
                 original_price: Number(p.original_price || 0),
-                selling_price: applyMarkup(p.original_price, markup),
+                markup_addon_idr: p.markup_addon_idr != null ? Number(p.markup_addon_idr) : null,
+                selling_price: computeSellingPrice(p.original_price, markup, p.markup_addon_idr),
                 currency: p.currency,
                 stock_status: p.stock_status,
                 stock_qty: p.stock_qty,

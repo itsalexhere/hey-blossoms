@@ -1,15 +1,20 @@
 /**
- * Remove products/brands outside VIP scope (4 sources × 3 brands).
- * Run once: node scripts/cleanup-vip-catalog.mjs
+ * Remove products outside VIP scope + invalid rows (N/A price, ZZER).
+ * Run: node scripts/cleanup-vip-catalog.mjs
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VIP_SOURCES, VIP_BRANDS, VIP_BRAND_ALIASES, normalizeVipBrand, isVipSource } from '../utils/vip-config.js';
+import {
+    VIP_SOURCES,
+    VIP_BRANDS,
+    VIP_BRAND_ALIASES,
+    normalizeVipBrand,
+    isVipSource,
+} from '../packages/shared/src/vip-config.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const content = fs.readFileSync(path.join(root, '.env.local'), 'utf-8');
-for (const line of content.split(/\r?\n/)) {
+for (const line of fs.readFileSync(path.join(root, '.env.local'), 'utf8').split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
     if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
@@ -31,6 +36,33 @@ function chunk(arr, size) {
     const out = [];
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
     return out;
+}
+
+function isZzerProduct(p) {
+    const hay = `${p.source || ''} ${p.title || ''} ${p.source_url || ''}`;
+    return /zzer/i.test(hay);
+}
+
+function isNaPrice(p) {
+    return Number(p.original_price || 0) <= 0;
+}
+
+async function fetchAllProducts() {
+    const pageSize = 1000;
+    const all = [];
+    let from = 0;
+    while (true) {
+        const { data, error } = await supabase
+            .from('products')
+            .select('id, source, title, source_url, original_price, brand_id, brands(name)')
+            .range(from, from + pageSize - 1);
+        if (error) throw new Error(error.message);
+        if (!data?.length) break;
+        all.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+    }
+    return all;
 }
 
 console.log('VIP cleanup — sources:', VIP_SOURCES.join(', '));
@@ -62,19 +94,40 @@ for (const [alias, canonical] of Object.entries(VIP_BRAND_ALIASES)) {
     await supabase.from('brands').delete().eq('id', aliasRow.id);
 }
 
-const { data: allProducts, error: listErr } = await supabase.from('products').select('id, source, brand_id, brands(name)');
-if (listErr) throw new Error(listErr.message);
+const allProducts = await fetchAllProducts();
+console.log(`Loaded ${allProducts.length} products from DB`);
 
-const toDelete = [];
+const toDelete = new Set();
+const reasons = { non_vip_source: 0, non_vip_brand: 0, na_price: 0, zzer: 0 };
 const toFixBrand = [];
 
-for (const p of allProducts || []) {
+for (const p of allProducts) {
     const brandName = p.brands?.name || null;
     const normalized = normalizeVipBrand(brandName);
-    if (!isVipSource(p.source) || !normalized) {
-        toDelete.push(p.id);
+    let remove = false;
+
+    if (isZzerProduct(p)) {
+        remove = true;
+        reasons.zzer++;
+    }
+    if (!isVipSource(p.source)) {
+        remove = true;
+        reasons.non_vip_source++;
+    }
+    if (!normalized) {
+        remove = true;
+        reasons.non_vip_brand++;
+    }
+    if (isNaPrice(p)) {
+        remove = true;
+        reasons.na_price++;
+    }
+
+    if (remove) {
+        toDelete.add(p.id);
         continue;
     }
+
     const wantId = brandIdByName[normalized];
     if (wantId && p.brand_id !== wantId) {
         toFixBrand.push({ id: p.id, brand_id: wantId });
@@ -86,11 +139,17 @@ for (const row of toFixBrand) {
 }
 console.log(`Normalized brand_id on ${toFixBrand.length} products`);
 
-for (const part of chunk(toDelete, 200)) {
+const deleteIds = [...toDelete];
+for (const part of chunk(deleteIds, 200)) {
     const { error } = await supabase.from('products').delete().in('id', part);
     if (error) throw new Error(error.message);
 }
-console.log(`Deleted ${toDelete.length} products (non-VIP source or brand)`);
+
+console.log(`Deleted ${deleteIds.length} products:`);
+console.log(`  - non-VIP source: ${reasons.non_vip_source} (may overlap)`);
+console.log(`  - non-VIP brand: ${reasons.non_vip_brand} (may overlap)`);
+console.log(`  - N/A price (0): ${reasons.na_price} (may overlap)`);
+console.log(`  - ZZER: ${reasons.zzer} (may overlap)`);
 
 const { data: allBrands } = await supabase.from('brands').select('id, name');
 let deletedBrands = 0;

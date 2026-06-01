@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./run-scrape": "./lib/run-scrape.js",
+    "./router": "./lib/router.js"
+  },
   "bin": {
     "luxe-scrape": "./bin/scrape.mjs"
   },

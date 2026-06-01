@@ -1,5 +1,6 @@
 import { BaseScraper } from './base.js';
 import { parseHuntstreetUrl, inferCategoryFromTitle } from '@luxe/shared/product-taxonomy';
+import { extractPdpFromPage } from '../lib/pdp-extract.js';
 
 // ============================================================
 // HuntStreet Scraper — Full paginated scrape (up to 111+ pages)
@@ -44,7 +45,7 @@ export class HuntstreetScraper extends BaseScraper {
             price_idr: this._parsePrice(raw.priceRaw),
             stock_status: 'available',
             stock_qty: null,
-            image_url: raw.imageUrl || null,
+            image_url: this._upgradeHuntstreetImage(raw.imageUrl) || null,
             product_url: raw.href,
             description: raw.cond ? `Condition: ${raw.cond}` : null,
         };
@@ -74,8 +75,8 @@ export class HuntstreetScraper extends BaseScraper {
                 : totalPages;
 
             if (cap <= 1) {
-                console.log(`[HuntStreet] maxPages=1, selesai.`);
-                return allProducts;
+                console.log(`[HuntStreet] maxPages=1, selesai — lanjut enrichment detail.`);
+                return await this.enrichProducts(allProducts);
             }
 
             // ── Pages 2..cap in parallel batches ──
@@ -110,11 +111,27 @@ export class HuntstreetScraper extends BaseScraper {
             }
 
             console.log(`[HuntStreet] SELESAI — ${allProducts.length} produk dari ${cap} halaman.`);
-            return allProducts;
+            return await this.enrichProducts(allProducts);
 
         } finally {
             await this.closeBrowser();
         }
+    }
+
+    async enrichFromDetailPage(product) {
+        await this.navigateWithRetry(product.product_url, { waitAfter: 2000, waitUntil: 'networkidle2' });
+        await this.page.waitForSelector('#flexslider img, #flexcarousel img', { timeout: 15000 }).catch(() => {});
+        await this.sleep(800);
+        const detail = await extractPdpFromPage(this.page, this.getBaseUrl(), 'huntstreet');
+        const parts = [];
+        if (detail.description) parts.push(detail.description);
+        if (product.description && !parts.includes(product.description)) {
+            parts.unshift(product.description);
+        }
+        return {
+            images: this._dedupeImages(detail.images, this.getBaseUrl()),
+            description: parts.join('\n\n') || null,
+        };
     }
 
     // ─────────────────────────────────────────────
@@ -288,6 +305,16 @@ export class HuntstreetScraper extends BaseScraper {
 
     _delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    _upgradeHuntstreetImage(url) {
+        if (!url) return null;
+        let u = String(url).trim();
+        if (u.startsWith('//')) u = 'https:' + u;
+        if (u.includes('img.huntstreet.com/uploads/product/images/')) {
+            return u.split('?')[0].replace(/\/(thumb|medium)\//, '/large/');
+        }
+        return u.split('?')[0] || null;
     }
 
     _parsePrice(text) {

@@ -94,6 +94,7 @@ create table if not exists public.products (
     brand_id        bigint references public.brands(id) on delete set null,
     category_id     bigint references public.categories(id) on delete set null,
     original_price  numeric(14,2) not null default 0,   -- in IDR
+    markup_addon_idr numeric(14,2),                  -- manual nominal upping; NULL = global %
     currency        text default 'IDR',
     original_amount numeric(14,2),               -- raw amount in source currency (admin reference)
     stock_status    text default 'available',    -- available | sold_out | out_of_stock
@@ -163,6 +164,22 @@ create index if not exists idx_scrape_errors_created on public.scrape_errors(cre
 create index if not exists idx_scrape_errors_log on public.scrape_errors(log_id);
 
 -- ------------------------------------------------------------
+-- 7c. SCRAPE_LOG_PRODUCTS (products touched per scrape session)
+-- ------------------------------------------------------------
+create table if not exists public.scrape_log_products (
+    id          bigint generated always as identity primary key,
+    log_id      bigint not null references public.scrape_logs(id) on delete cascade,
+    product_id  bigint not null references public.products(id) on delete cascade,
+    action      text not null default 'updated',
+    created_at  timestamptz not null default now(),
+    constraint scrape_log_products_action_check check (action in ('inserted', 'updated')),
+    unique (log_id, product_id)
+);
+
+create index if not exists idx_scrape_log_products_log on public.scrape_log_products(log_id);
+create index if not exists idx_scrape_log_products_product on public.scrape_log_products(product_id);
+
+-- ------------------------------------------------------------
 -- 8. SETTINGS (global key-value; markup_percent etc.)
 -- ------------------------------------------------------------
 create table if not exists public.settings (
@@ -172,7 +189,9 @@ create table if not exists public.settings (
 );
 
 insert into public.settings (key, value) values
-    ('markup_percent', '20')
+    ('markup_percent', '20'),
+    ('whatsapp_number', ''),
+    ('whatsapp_message', 'Halo, saya tertarik dengan produk di toko Anda.')
 on conflict (key) do nothing;
 
 -- ------------------------------------------------------------
@@ -187,6 +206,7 @@ alter table public.brands         enable row level security;
 alter table public.settings       enable row level security;
 alter table public.scrape_logs    enable row level security;
 alter table public.scrape_errors  enable row level security;
+alter table public.scrape_log_products enable row level security;
 alter table public.profiles       enable row level security;
 alter table public.roles          enable row level security;
 
@@ -229,6 +249,10 @@ create policy "authenticated read scrape_logs" on public.scrape_logs
 -- scrape_errors: only authenticated users can read (admin monitoring)
 drop policy if exists "authenticated read scrape_errors" on public.scrape_errors;
 create policy "authenticated read scrape_errors" on public.scrape_errors
+    for select using (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated read scrape_log_products" on public.scrape_log_products;
+create policy "authenticated read scrape_log_products" on public.scrape_log_products
     for select using (auth.role() = 'authenticated');
 
 -- ------------------------------------------------------------

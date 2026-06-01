@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { AC, PageTitle, Card, Button, inputStyle } from '../../../components/admin-ui';
 import { CURATED_SITES, getTargetsForSite } from '@luxe/shared/scrape-targets';
 import { VIP_BRANDS } from '@luxe/shared/vip-config';
@@ -11,11 +11,12 @@ function firstTarget(site) {
     return getTargetsForSite(site)[0] || null;
 }
 
-function buildCliCommand({ url, headless, maxPages, gender, brand, partialScrape, site }) {
+function buildCliCommand({ url, headless, maxPages, gender, brand, partialScrape, skipDetail, site }) {
     const parts = ['npm run scrape --', `--url "${url}"`, `--maxPages ${maxPages}`, `--headless ${headless}`];
     if (gender && !GENDER_INFERRED_SITES.has(site)) parts.push(`--gender ${gender}`);
     if (brand) parts.push(`--brand "${brand}"`);
     if (partialScrape) parts.push('--partial');
+    if (skipDetail) parts.push('--skipDetail');
     return parts.join(' ');
 }
 
@@ -28,15 +29,23 @@ export default function ScraperPage() {
     const [gender, setGender] = useState(initialTarget?.gender || '');
     const [brand, setBrand] = useState(initialTarget?.brand || '');
     const [partialScrape, setPartialScrape] = useState(true);
+    const [skipDetail, setSkipDetail] = useState(false);
     const [curatedId, setCuratedId] = useState(initialTarget?.id || '');
     const [copied, setCopied] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [result, setResult] = useState(null);
+    const [error, setError] = useState('');
+    const [elapsed, setElapsed] = useState(0);
+    const timerRef = useRef(null);
 
     const siteTargets = useMemo(() => getTargetsForSite(site), [site]);
 
     const cliCommand = useMemo(
-        () => buildCliCommand({ url, headless, maxPages, gender, brand, partialScrape, site }),
-        [url, headless, maxPages, gender, brand, partialScrape, site]
+        () => buildCliCommand({ url, headless, maxPages, gender, brand, partialScrape, skipDetail, site }),
+        [url, headless, maxPages, gender, brand, partialScrape, skipDetail, site]
     );
+
+    useEffect(() => () => clearInterval(timerRef.current), []);
 
     function applyCuratedTarget(id, siteName = site) {
         const targets = getTargetsForSite(siteName);
@@ -61,8 +70,40 @@ export default function ScraperPage() {
             await navigator.clipboard.writeText(`cd js_scraper\n${cliCommand}`);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch {
-            /* clipboard may be blocked */
+        } catch { /* clipboard blocked */ }
+    }
+
+    async function runScrapeFromAdmin() {
+        setLoading(true);
+        setError('');
+        setResult(null);
+        setElapsed(0);
+        timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+
+        try {
+            const body = {
+                url,
+                headless,
+                maxPages: Number(maxPages),
+                partialScrape,
+                skipDetail,
+            };
+            if (gender && !GENDER_INFERRED_SITES.has(site)) body.gender = gender;
+            if (brand) body.brand = brand;
+
+            const res = await fetch('/api/admin/scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const d = await res.json();
+            if (d.success) setResult(d);
+            else setError(d.message || 'Scraping gagal.');
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            clearInterval(timerRef.current);
+            setLoading(false);
         }
     }
 
@@ -70,7 +111,7 @@ export default function ScraperPage() {
         <div>
             <PageTitle
                 title="Scraper"
-                subtitle="Scraping dijalankan di laptop lokal (Puppeteer). Vercel hanya menampilkan katalog."
+                subtitle="Jalankan dari laptop lokal (Laragon). Termasuk multi-foto + deskripsi otomatis."
             />
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'start' }}>
@@ -82,14 +123,16 @@ export default function ScraperPage() {
                         {CURATED_SITES.map((s) => (
                             <button
                                 key={s}
+                                type="button"
                                 onClick={() => changeSite(s)}
+                                disabled={loading}
                                 style={{
                                     padding: '0.45rem 0.9rem',
                                     borderRadius: 20,
                                     border: `1px solid ${site === s ? AC.dark : AC.border}`,
                                     background: site === s ? AC.dark : 'transparent',
                                     color: site === s ? '#fff' : AC.text,
-                                    cursor: 'pointer',
+                                    cursor: loading ? 'default' : 'pointer',
                                     fontSize: '0.8rem',
                                     fontWeight: 600,
                                 }}
@@ -103,6 +146,7 @@ export default function ScraperPage() {
                     <select
                         value={curatedId}
                         onChange={(e) => applyCuratedTarget(e.target.value)}
+                        disabled={loading}
                         style={{ ...inputStyle, width: '100%', marginBottom: 12 }}
                     >
                         {siteTargets.map((t) => (
@@ -116,6 +160,7 @@ export default function ScraperPage() {
                     <input
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
+                        disabled={loading}
                         style={{ ...inputStyle, width: '100%', marginBottom: 12 }}
                     />
 
@@ -126,21 +171,9 @@ export default function ScraperPage() {
                                 value={gender}
                                 onChange={(e) => setGender(e.target.value)}
                                 placeholder={GENDER_INFERRED_SITES.has(site) ? 'Otomatis per produk' : 'men / women'}
-                                disabled={GENDER_INFERRED_SITES.has(site)}
+                                disabled={loading || GENDER_INFERRED_SITES.has(site)}
                                 style={{ ...inputStyle, width: '100%', opacity: GENDER_INFERRED_SITES.has(site) ? 0.65 : 1 }}
                             />
-                            {GENDER_INFERRED_SITES.has(site) && (
-                                <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: AC.muted, lineHeight: 1.4 }}>
-                                    {site === 'Banananina'
-                                        ? 'Banananina: gender dari URL produk (/men/ = men, selain itu = women).'
-                                        : "Yoogi's Closet: gender otomatis dari judul/tipe produk."}
-                                </p>
-                            )}
-                            {GENDER_FROM_URL_SITES.has(site) && (
-                                <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: AC.muted, lineHeight: 1.4 }}>
-                                    Gender mengikuti job yang dipilih di atas.
-                                </p>
-                            )}
                         </div>
                         <div>
                             <label style={lbl}>Brand</label>
@@ -148,6 +181,7 @@ export default function ScraperPage() {
                                 value={brand}
                                 onChange={(e) => setBrand(e.target.value)}
                                 placeholder={VIP_BRANDS.join(' / ')}
+                                disabled={loading}
                                 style={{ ...inputStyle, width: '100%' }}
                             />
                         </div>
@@ -157,56 +191,103 @@ export default function ScraperPage() {
                                 type="number"
                                 value={maxPages}
                                 onChange={(e) => setMaxPages(e.target.value)}
+                                disabled={loading}
                                 style={{ ...inputStyle, width: '100%' }}
                             />
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={partialScrape} onChange={(e) => setPartialScrape(e.target.checked)} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: loading ? 'default' : 'pointer' }}>
+                            <input type="checkbox" checked={partialScrape} onChange={(e) => setPartialScrape(e.target.checked)} disabled={loading} />
                             Scrape sebagian (jangan sweep sold-out global)
                         </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} />
-                            Headless
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: loading ? 'default' : 'pointer' }}>
+                            <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} disabled={loading} />
+                            Headless browser
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: loading ? 'default' : 'pointer' }}>
+                            <input type="checkbox" checked={skipDetail} onChange={(e) => setSkipDetail(e.target.checked)} disabled={loading} />
+                            Lewati multi-foto &amp; deskripsi (scrape cepat)
                         </label>
                     </div>
-                </Card>
 
-                <Card>
-                    <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Jalankan di Laptop</h3>
-                    <p style={{ color: AC.muted, fontSize: '0.85rem', lineHeight: 1.6, marginTop: 0 }}>
-                        Buka terminal di folder <code style={{ fontSize: '0.8rem' }}>js_scraper</code>, lalu jalankan perintah berikut.
-                        Hasil scrape otomatis masuk ke Supabase — cek menu <strong>Scrape Logs</strong>.
-                    </p>
-
-                    <pre
-                        style={{
-                            background: '#1e1e1e',
-                            color: '#d4d4d4',
-                            padding: '1rem',
-                            borderRadius: 8,
-                            fontSize: '0.78rem',
-                            lineHeight: 1.5,
-                            overflow: 'auto',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-all',
-                            margin: '0 0 12px',
-                        }}
-                    >
-                        {`cd js_scraper\n${cliCommand}`}
-                    </pre>
-
-                    <Button variant="gold" onClick={copyCommand} style={{ width: '100%', padding: '0.8rem' }}>
-                        {copied ? '✓ Disalin!' : 'Salin Perintah'}
+                    <Button variant="pink" onClick={runScrapeFromAdmin} disabled={loading} style={{ width: '100%', padding: '0.8rem', marginBottom: 10 }}>
+                        {loading ? `Scraping... (${elapsed}s)` : 'Mulai Scrape'}
                     </Button>
-
-                    <p style={{ color: AC.muted, fontSize: '0.78rem', marginTop: 12, lineHeight: 1.5 }}>
-                        Pastikan <code>.env.local</code> berisi kredensial Supabase. Proses scrape membutuhkan Chrome/Puppeteer di laptop.
-                    </p>
+                    {loading && (
+                        <p style={{ color: AC.muted, fontSize: '0.8rem', margin: 0, lineHeight: 1.5 }}>
+                            Proses berjalan di laptop ini (Chrome/Puppeteer). Jangan tutup tab — bisa beberapa menit jika banyak produk.
+                        </p>
+                    )}
                 </Card>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <Card>
+                        <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Hasil</h3>
+                        {!result && !error && !loading && (
+                            <div style={{ color: AC.muted, fontSize: '0.9rem' }}>Belum ada eksekusi. Klik Mulai Scrape.</div>
+                        )}
+                        {loading && <div style={{ color: AC.blue, fontSize: '0.9rem' }}>● Sedang berjalan ({elapsed}s)...</div>}
+                        {error && (
+                            <div style={{ background: 'rgba(192,57,43,0.1)', color: AC.danger, padding: '0.8rem', borderRadius: 8, fontSize: '0.85rem' }}>
+                                {error}
+                            </div>
+                        )}
+                        {result && (
+                            <div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                                    <Stat label="Total Produk" value={result.total_products} />
+                                    <Stat label="Durasi" value={`${result.duration_seconds}s`} />
+                                    <Stat label="Baru" value={result.db_result?.inserted ?? 0} color={AC.success} />
+                                    <Stat label="Diperbarui" value={result.db_result?.updated ?? 0} />
+                                    <Stat label="Multi-foto" value={result.detail_stats?.multi_photo ?? 0} color={AC.blue} />
+                                    <Stat label="Ada deskripsi" value={result.detail_stats?.with_description ?? 0} />
+                                    <Stat label="Error" value={result.total_errors} color={result.total_errors ? AC.danger : AC.muted} />
+                                </div>
+                                <div style={{ color: AC.success, fontWeight: 600, fontSize: '0.9rem' }}>
+                                    ✓ Tersimpan ke Supabase (sesi #{result.session_id})
+                                </div>
+                            </div>
+                        )}
+                    </Card>
+
+                    <Card>
+                        <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Alternatif: Terminal</h3>
+                        <p style={{ color: AC.muted, fontSize: '0.85rem', lineHeight: 1.6, marginTop: 0 }}>
+                            Atau salin perintah CLI di bawah. Di Vercel (production) scrape hanya bisa via terminal lokal.
+                        </p>
+                        <pre
+                            style={{
+                                background: '#1e1e1e',
+                                color: '#d4d4d4',
+                                padding: '1rem',
+                                borderRadius: 8,
+                                fontSize: '0.78rem',
+                                lineHeight: 1.5,
+                                overflow: 'auto',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-all',
+                                margin: '0 0 12px',
+                            }}
+                        >
+                            {`cd js_scraper\n${cliCommand}`}
+                        </pre>
+                        <Button variant="outline" onClick={copyCommand} style={{ width: '100%' }}>
+                            {copied ? '✓ Disalin!' : 'Salin Perintah CLI'}
+                        </Button>
+                    </Card>
+                </div>
             </div>
+        </div>
+    );
+}
+
+function Stat({ label, value, color }) {
+    return (
+        <div style={{ background: '#fafafa', borderRadius: 8, padding: '0.7rem' }}>
+            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: color || AC.text }}>{value}</div>
+            <div style={{ color: AC.muted, fontSize: '0.75rem' }}>{label}</div>
         </div>
     );
 }

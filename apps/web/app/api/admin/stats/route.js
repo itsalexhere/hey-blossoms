@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentAdmin } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@luxe/shared/supabase';
-import { getMarkupPercent } from '@/lib/storefront';
+import { getMarkupPercent, computeSellingPrice } from '@/lib/storefront';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +29,15 @@ export async function GET() {
         ]);
 
         // total inventory value (original) for admin
-        const { data: priceRows } = await supabase.from('products').select('original_price').eq('is_active', true);
+        const { data: priceRows } = await supabase
+            .from('products')
+            .select('original_price, markup_addon_idr')
+            .eq('is_active', true);
         const inventoryOriginal = (priceRows || []).reduce((s, r) => s + Number(r.original_price || 0), 0);
-        const inventorySelling = Math.round(inventoryOriginal * (1 + markup / 100));
+        const inventorySelling = (priceRows || []).reduce(
+            (s, r) => s + computeSellingPrice(r.original_price, markup, r.markup_addon_idr),
+            0
+        );
 
         const { data: recentLogs } = await supabase
             .from('scrape_logs')

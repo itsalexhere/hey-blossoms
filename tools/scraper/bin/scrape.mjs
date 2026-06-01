@@ -44,7 +44,7 @@ function loadEnv() {
 }
 
 function parseArgs(argv) {
-    const args = { headless: true, partialScrape: false };
+    const args = { headless: true, partialScrape: false, skipDetail: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--url') args.url = argv[++i];
@@ -54,6 +54,7 @@ function parseArgs(argv) {
         else if (a === '--brand') args.brand = argv[++i];
         else if (a === '--categoryHint') args.categoryHint = argv[++i];
         else if (a === '--partial') args.partialScrape = true;
+        else if (a === '--skipDetail') args.skipDetail = true;
         else if (a === '--help' || a === '-h') args.help = true;
     }
     return args;
@@ -73,6 +74,7 @@ Options:
   --brand         Filter brand e.g. "Louis Vuitton"
   --categoryHint  Category hint for taxonomy
   --partial       Skip global sold-out sweep
+  --skipDetail    Skip PDP enrichment (gallery + description)
   --help          Show this help
 
 Supported: ${getSupportedDomains().join(', ')}
@@ -119,7 +121,7 @@ async function main() {
 
     console.log(`[scrape] Session #${sessionId} — ${sourceInfo.name}: ${args.url}`);
 
-    const scraperOptions = { headless: args.headless };
+    const scraperOptions = { headless: args.headless, skipDetail: args.skipDetail };
     if (args.maxPages) scraperOptions.maxPages = args.maxPages;
     if (args.gender) scraperOptions.gender = args.gender;
     if (args.brand) scraperOptions.brand = args.brand;

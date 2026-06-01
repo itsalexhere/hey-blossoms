@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -18,6 +18,16 @@ function LoginForm() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [branding, setBranding] = useState({ store_name: 'HEY BLOSSOM', store_logo_url: '' });
+
+    useEffect(() => {
+        fetch('/api/store/filters')
+            .then((r) => r.json())
+            .then((d) => {
+                if (d.success && d.branding) setBranding(d.branding);
+            })
+            .catch(() => {});
+    }, []);
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -42,7 +52,7 @@ function LoginForm() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#1d1d1f',
+                background: '#3B5B9D',
                 color: '#fff',
             }}
         >
@@ -58,9 +68,14 @@ function LoginForm() {
                 }}
             >
                 <div style={{ textAlign: 'center', marginBottom: '1.8rem' }}>
-                    <div style={{ fontFamily: 'Playfair Display, serif', fontSize: '1.8rem', fontWeight: 700 }}>
-                        LUXE<span style={{ color: '#c5a880' }}>.</span>
-                    </div>
+                    {branding.store_logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={branding.store_logo_url} alt={branding.store_name} style={{ height: 48, width: 'auto', objectFit: 'contain', marginBottom: 8 }} />
+                    ) : (
+                        <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.6rem', fontWeight: 700, color: '#3B5B9D' }}>
+                            {branding.store_name}
+                        </div>
+                    )}
                     <div style={{ fontSize: '0.75rem', letterSpacing: '2px', color: '#6e6e73', textTransform: 'uppercase', marginTop: 4 }}>
                         Admin Panel
                     </div>
@@ -87,7 +102,7 @@ function LoginForm() {
                         marginTop: '1rem',
                         borderRadius: 10,
                         border: 'none',
-                        background: '#1d1d1f',
+                        background: '#3B5B9D',
                         color: '#fff',
                         fontWeight: 600,
                         fontSize: '0.95rem',

@@ -1,14 +1,15 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { AC, PageTitle, Card, formatIDR, formatProductDate, Button, inputStyle, StatusBadge } from '../../../components/admin-ui';
+import { AC, PageTitle, Card, formatIDR, formatProductDate, Button, inputStyle, StatusBadge, ModalOverlay } from '../../../components/admin-ui';
 import { VIP_SOURCES } from '@luxe/shared/vip-config';
+import { computeSellingPrice } from '@luxe/shared/pricing';
 
 export default function ProductsPage() {
     const [products, setProducts] = useState([]);
     const [total, setTotal] = useState(0);
     const [markup, setMarkup] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [editing, setEditing] = useState(null);
+    const [editProduct, setEditProduct] = useState(null);
 
     const [search, setSearch] = useState('');
     const [source, setSource] = useState('');
@@ -77,7 +78,7 @@ export default function ProductsPage() {
         });
         const d = await res.json();
         if (d.success) {
-            setEditing(null);
+            setEditProduct(null);
             load();
         } else {
             alert('Gagal: ' + d.error);
@@ -213,7 +214,7 @@ export default function ProductsPage() {
                                 <th style={th}>Produk</th>
                                 <th style={th}>Gender</th>
                                 <th style={th}>Sumber</th>
-                                <th style={th}>Harga Asli</th>
+                                <th style={th}>Upping</th>
                                 <th style={th}>Harga Jual</th>
                                 <th style={th}>Stok</th>
                                 <th style={th}>Aktif</th>
@@ -223,7 +224,7 @@ export default function ProductsPage() {
                         </thead>
                         <tbody>
                             {products.map((p) => (
-                                <ProductRow key={p.id} p={p} markup={markup} editing={editing === p.id} onEdit={() => setEditing(p.id)} onCancel={() => setEditing(null)} onSave={saveEdit} onDelete={remove} />
+                                <ProductRow key={p.id} p={p} markup={markup} onEdit={() => setEditProduct(p)} onDelete={remove} />
                             ))}
                             {loading && (
                                 <tr>
@@ -247,24 +248,100 @@ export default function ProductsPage() {
                     <Button variant="outline" onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>Next ›</Button>
                 </div>
             )}
+
+            {editProduct && (
+                <ProductEditModal
+                    product={editProduct}
+                    markup={markup}
+                    onClose={() => setEditProduct(null)}
+                    onSave={saveEdit}
+                />
+            )}
         </div>
     );
 }
 
-function ProductRow({ p, markup, editing, onEdit, onCancel, onSave, onDelete }) {
-    const [price, setPrice] = useState(p.original_price);
-    const [stockStatus, setStockStatus] = useState(p.stock_status);
-    const [stockQty, setStockQty] = useState(p.stock_qty ?? '');
-    const [isActive, setIsActive] = useState(p.is_active);
+function ProductEditModal({ product, markup, onClose, onSave }) {
+    const [useManual, setUseManual] = useState(product.markup_addon_idr != null);
+    const [addon, setAddon] = useState(product.markup_addon_idr != null ? String(product.markup_addon_idr) : '');
+    const [stockStatus, setStockStatus] = useState(product.stock_status);
+    const [stockQty, setStockQty] = useState(product.stock_qty ?? '');
+    const [isActive, setIsActive] = useState(product.is_active);
+    const [saving, setSaving] = useState(false);
 
-    useEffect(() => {
-        setPrice(p.original_price);
-        setStockStatus(p.stock_status);
-        setStockQty(p.stock_qty ?? '');
-        setIsActive(p.is_active);
-    }, [p, editing]);
+    const addonNum = useManual && addon !== '' ? Number(addon) : null;
+    const previewSell = computeSellingPrice(product.original_price, markup, addonNum);
 
-    const previewSell = Math.round(Number(price || 0) * (1 + markup / 100));
+    async function handleSave() {
+        setSaving(true);
+        await onSave(product.id, {
+            markup_addon_idr: useManual && addon !== '' ? Number(addon) : null,
+            stock_status: stockStatus,
+            stock_qty: stockQty === '' ? null : Number(stockQty),
+            is_active: isActive,
+        });
+        setSaving(false);
+    }
+
+    const lbl = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: AC.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' };
+
+    return (
+        <ModalOverlay onClose={onClose}>
+            <h2 style={{ marginTop: 0, fontFamily: 'Outfit, sans-serif' }}>Edit Produk</h2>
+            <p style={{ color: AC.muted, fontSize: '0.85rem', marginBottom: '1rem' }}>{product.title}</p>
+
+            <div style={{ display: 'grid', gap: 8, marginBottom: '1rem', fontSize: '0.9rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: AC.muted }}>Brand</span><strong>{product.brand || '—'}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: AC.muted }}>Sumber</span><strong>{product.source}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: AC.muted }}>Harga asli (dari sumber)</span><strong>{formatIDR(product.original_price)}</strong></div>
+            </div>
+
+            <label style={lbl}>Upping harga manual (nominal)</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', marginBottom: 8 }}>
+                <input type="checkbox" checked={useManual} onChange={(e) => setUseManual(e.target.checked)} />
+                Pakai upping manual per produk
+            </label>
+            {useManual ? (
+                <>
+                    <input type="number" value={addon} onChange={(e) => setAddon(e.target.value)} placeholder="Contoh: 1000000" style={{ ...inputStyle, width: '100%', marginBottom: 8 }} />
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                        {[500000, 1000000, 2000000].map((n) => (
+                            <Button key={n} variant="outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.78rem' }} onClick={() => setAddon(String(n))}>+{formatIDR(n)}</Button>
+                        ))}
+                    </div>
+                </>
+            ) : (
+                <p style={{ fontSize: '0.8rem', color: AC.muted, marginBottom: 12 }}>Markup global {markup}% → {formatIDR(computeSellingPrice(product.original_price, markup, null))}</p>
+            )}
+
+            <div style={{ background: AC.pinkSoft, borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', color: AC.muted, marginBottom: 4 }}>Preview harga jual</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: AC.blue }}>{formatIDR(previewSell)}</div>
+            </div>
+
+            <label style={lbl}>Stok</label>
+            <select value={stockStatus} onChange={(e) => setStockStatus(e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 8 }}>
+                <option value="available">Tersedia</option>
+                <option value="sold_out">Habis</option>
+                <option value="out_of_stock">Out of stock</option>
+            </select>
+            <input type="number" placeholder="Qty (opsional)" value={stockQty} onChange={(e) => setStockQty(e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 12 }} />
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: '0.9rem' }}>
+                <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                Produk aktif di storefront
+            </label>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+                <Button variant="pink" onClick={handleSave} disabled={saving} style={{ flex: 1 }}>{saving ? 'Menyimpan...' : 'Simpan'}</Button>
+                <Button variant="outline" onClick={onClose}>Batal</Button>
+            </div>
+        </ModalOverlay>
+    );
+}
+
+function ProductRow({ p, markup, onEdit, onDelete }) {
+    const isManual = p.markup_addon_idr != null;
 
     return (
         <tr style={{ borderTop: `1px solid ${AC.border}` }}>
@@ -278,7 +355,7 @@ function ProductRow({ p, markup, editing, onEdit, onCancel, onSave, onDelete }) 
                     )}
                     <div style={{ maxWidth: 240 }}>
                         <div style={{ fontWeight: 600, lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.title}</div>
-                        {p.brand && <div style={{ color: AC.gold, fontSize: '0.7rem' }}>{p.brand}</div>}
+                        {p.brand && <div style={{ color: AC.pink, fontSize: '0.7rem' }}>{p.brand}</div>}
                     </div>
                 </div>
             </td>
@@ -294,68 +371,30 @@ function ProductRow({ p, markup, editing, onEdit, onCancel, onSave, onDelete }) 
             <td style={td}>
                 <div style={{ fontWeight: 600 }}>{p.source}</div>
                 {p.source_url && (
-                    <a
-                        href={p.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={p.source_url}
-                        style={{ color: AC.gold, fontSize: '0.72rem', textDecoration: 'none', display: 'inline-block', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom' }}
-                    >
+                    <a href={p.source_url} target="_blank" rel="noopener noreferrer" title={p.source_url} style={{ color: AC.blue, fontSize: '0.72rem', textDecoration: 'none', display: 'inline-block', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom' }}>
                         Lihat sumber ↗
                     </a>
                 )}
             </td>
             <td style={td}>
-                {editing ? (
-                    <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} style={{ ...inputStyle, width: 120, padding: '0.35rem 0.5rem' }} />
+                {isManual ? (
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: AC.blue }}>+{formatIDR(p.markup_addon_idr)}</span>
                 ) : (
-                    formatIDR(p.original_price)
+                    <span style={{ fontSize: '0.78rem', color: AC.muted }}>Global {markup}%</span>
                 )}
             </td>
-            <td style={{ ...td, fontWeight: 700, color: AC.gold }}>{formatIDR(editing ? previewSell : p.selling_price)}</td>
-            <td style={td}>
-                {editing ? (
-                    <div style={{ display: 'flex', gap: 4, flexDirection: 'column' }}>
-                        <select value={stockStatus} onChange={(e) => setStockStatus(e.target.value)} style={{ ...inputStyle, padding: '0.3rem' }}>
-                            <option value="available">Tersedia</option>
-                            <option value="sold_out">Habis</option>
-                            <option value="out_of_stock">Out of stock</option>
-                        </select>
-                        <input type="number" placeholder="qty" value={stockQty} onChange={(e) => setStockQty(e.target.value)} style={{ ...inputStyle, width: 70, padding: '0.3rem' }} />
-                    </div>
-                ) : (
-                    <StatusBadge status={p.stock_status} />
-                )}
-            </td>
-            <td style={td}>
-                {editing ? (
-                    <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-                ) : p.is_active ? (
-                    <span style={{ color: AC.success }}>●</span>
-                ) : (
-                    <span style={{ color: AC.muted }}>○</span>
-                )}
-            </td>
+            <td style={{ ...td, fontWeight: 700, color: AC.blue }}>{formatIDR(p.selling_price)}</td>
+            <td style={td}><StatusBadge status={p.stock_status} /></td>
+            <td style={td}>{p.is_active ? <span style={{ color: AC.success }}>●</span> : <span style={{ color: AC.muted }}>○</span>}</td>
             <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                <div style={{ fontSize: '0.78rem', lineHeight: 1.35 }}>
-                    {formatProductDate(p.updated_at || p.scraped_at)}
-                </div>
-                <div style={{ fontSize: '0.68rem', color: AC.muted, marginTop: 2 }}>
-                    Ditambahkan: {formatProductDate(p.created_at)}
-                </div>
+                <div style={{ fontSize: '0.78rem', lineHeight: 1.35 }}>{formatProductDate(p.updated_at || p.scraped_at)}</div>
+                <div style={{ fontSize: '0.68rem', color: AC.muted, marginTop: 2 }}>Ditambahkan: {formatProductDate(p.created_at)}</div>
             </td>
             <td style={td}>
-                {editing ? (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                        <Button variant="gold" style={{ padding: '0.35rem 0.7rem' }} onClick={() => onSave(p.id, { original_price: price, stock_status: stockStatus, stock_qty: stockQty === '' ? null : stockQty, is_active: isActive })}>Simpan</Button>
-                        <Button variant="outline" style={{ padding: '0.35rem 0.7rem' }} onClick={onCancel}>Batal</Button>
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                        <Button variant="outline" style={{ padding: '0.35rem 0.7rem' }} onClick={onEdit}>Edit</Button>
-                        <Button variant="danger" style={{ padding: '0.35rem 0.7rem' }} onClick={() => onDelete(p.id)}>Hapus</Button>
-                    </div>
-                )}
+                <div style={{ display: 'flex', gap: 6 }}>
+                    <Button variant="outline" style={{ padding: '0.35rem 0.7rem' }} onClick={onEdit}>Edit</Button>
+                    <Button variant="danger" style={{ padding: '0.35rem 0.7rem' }} onClick={() => onDelete(p.id)}>Hapus</Button>
+                </div>
             </td>
         </tr>
     );

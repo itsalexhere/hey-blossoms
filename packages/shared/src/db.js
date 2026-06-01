@@ -237,7 +237,7 @@ export async function insertProducts(products, sourceId, sessionId) {
     const existingByUrl = new Map();
     for (const part of chunk(urls, URL_CHECK_CHUNK)) {
         const { data, error } = await withRetry(
-            () => supabase.from('products').select('id, source_url, original_price').in('source_url', part),
+            () => supabase.from('products').select('id, source_url, original_price, description').in('source_url', part),
             'load existing products'
         );
         if (error) throw new Error(`load existing products failed: ${error.message}`);
@@ -249,6 +249,13 @@ export async function insertProducts(products, sourceId, sessionId) {
     const rows = eligible.map((p) => {
             const priceIdr = Number(p.price_idr || 0);
             const catSlug = resolveProductCategorySlug(p.title, p.category || '', p.category || '');
+            const existing = existingByUrl.get(p.product_url);
+            const incomingDesc = p.description && String(p.description).trim() ? String(p.description).trim() : null;
+            const existingDesc = existing?.description && String(existing.description).trim() ? String(existing.description).trim() : null;
+            const description =
+                incomingDesc && existingDesc
+                    ? (incomingDesc.length >= existingDesc.length ? incomingDesc : existingDesc)
+                    : (incomingDesc ?? existingDesc ?? null);
             const row = {
                 source: sourceId,
                 source_url: p.product_url,
@@ -260,7 +267,7 @@ export async function insertProducts(products, sourceId, sessionId) {
                 original_amount: Number(p.price_original || 0) || null,
                 stock_status: p.stock_status || 'available',
                 stock_qty: p.stock_qty ?? null,
-                description: p.description || null,
+                description,
                 scraped_at: now,
                 updated_at: now,
             };
@@ -296,14 +303,31 @@ export async function insertProducts(products, sourceId, sessionId) {
         for (const row of data || []) idByUrl.set(row.source_url, row.id);
     }
 
-    // 6. Insert product images (one per product from image_url; dedupe via unique index)
+    // 6. Sync product images (replace set per product when scraper provides URLs)
     const imageRows = [];
-    for (const p of products) {
+    const productIdsToSync = [];
+    for (const p of eligible) {
         const pid = idByUrl.get(p.product_url);
-        if (pid && p.image_url) {
-            imageRows.push({ product_id: pid, image_url: p.image_url, position: 0 });
-        }
+        if (!pid) continue;
+        const urls = p.images?.length
+            ? p.images
+            : (p.image_url ? [p.image_url] : []);
+        const normalized = [...new Set(urls.map((u) => String(u).trim()).filter(Boolean))];
+        if (normalized.length === 0) continue;
+        productIdsToSync.push(pid);
+        normalized.forEach((image_url, position) => {
+            imageRows.push({ product_id: pid, image_url, position });
+        });
     }
+
+    for (const part of chunk(productIdsToSync, CHUNK)) {
+        const { error } = await withRetry(
+            () => supabase.from('product_images').delete().in('product_id', part),
+            'delete product_images'
+        );
+        if (error) console.error('delete product_images chunk failed:', error.message);
+    }
+
     for (const part of chunk(imageRows, CHUNK)) {
         const { error } = await withRetry(
             () => supabase.from('product_images').upsert(part, { onConflict: 'product_id,image_url', ignoreDuplicates: true }),
@@ -312,7 +336,115 @@ export async function insertProducts(products, sourceId, sessionId) {
         if (error) console.error('upsert product_images chunk failed:', error.message);
     }
 
+    // 7. Link products to scrape session for admin log detail
+    if (sessionId && idByUrl.size > 0) {
+        const logRows = [];
+        for (const p of eligible) {
+            const pid = idByUrl.get(p.product_url);
+            if (!pid) continue;
+            logRows.push({
+                log_id: sessionId,
+                product_id: pid,
+                action: existingByUrl.has(p.product_url) ? 'updated' : 'inserted',
+            });
+        }
+        for (const part of chunk(logRows, CHUNK)) {
+            const { error } = await withRetry(
+                () => supabase.from('scrape_log_products').upsert(part, { onConflict: 'log_id,product_id' }),
+                'upsert scrape_log_products'
+            );
+            if (error) console.error('upsert scrape_log_products chunk failed:', error.message);
+        }
+    }
+
     return results;
+}
+
+/** Products scraped in a session (junction table, with scraped_at fallback for old logs). */
+export async function getScrapeLogProducts(logId) {
+    const supabase = getSupabaseAdmin();
+
+    const { data: log, error: logErr } = await supabase
+        .from('scrape_logs')
+        .select('id, source, started_at, completed_at, scrape_url')
+        .eq('id', logId)
+        .maybeSingle();
+    if (logErr) throw new Error(`getScrapeLogProducts log failed: ${logErr.message}`);
+    if (!log) return null;
+
+    const productSelect =
+        'id, title, source, source_url, original_price, stock_status, scraped_at, brands(name), product_images(image_url, position)';
+
+    const { data: linked, error: linkErr } = await supabase
+        .from('scrape_log_products')
+        .select(`action, products(${productSelect})`)
+        .eq('log_id', logId)
+        .order('action', { ascending: true });
+
+    if (!linkErr && linked?.length) {
+        return {
+            log,
+            source: 'junction',
+            products: linked
+                .filter((row) => row.products)
+                .map((row) => ({
+                    action: row.action,
+                    ...mapScrapeLogProduct(row.products),
+                })),
+        };
+    }
+
+    // Fallback for logs before scrape_log_products existed
+    let q = supabase
+        .from('products')
+        .select(productSelect)
+        .eq('source', log.source)
+        .gte('scraped_at', log.started_at)
+        .order('title', { ascending: true })
+        .limit(500);
+
+    if (log.completed_at) {
+        const end = new Date(log.completed_at);
+        end.setMinutes(end.getMinutes() + 2);
+        q = q.lte('scraped_at', end.toISOString());
+    }
+
+    const { data: fallback, error: fbErr } = await q;
+    if (fbErr) throw new Error(`getScrapeLogProducts fallback failed: ${fbErr.message}`);
+
+    return {
+        log,
+        source: 'fallback',
+        products: (fallback || []).map((p) => ({
+            action: 'updated',
+            ...mapScrapeLogProduct(p),
+        })),
+    };
+}
+
+function mapScrapeLogProduct(p) {
+    const images = (p.product_images || []).sort((a, b) => a.position - b.position);
+    const thumb = images[0]?.image_url || null;
+    return {
+        id: p.id,
+        title: p.title,
+        brand: p.brands?.name || null,
+        source_url: p.source_url,
+        original_price: p.original_price,
+        stock_status: p.stock_status,
+        scraped_at: p.scraped_at,
+        description: p.description || null,
+        image_url: upgradeListingImageUrl(thumb),
+        image_count: images.length,
+    };
+}
+
+function upgradeListingImageUrl(url) {
+    if (!url) return null;
+    if (url.includes('img.huntstreet.com/uploads/product/images/')) {
+        return url.replace(/\/(thumb|medium)\//, '/large/');
+    }
+    return url;
 }
 
 /**

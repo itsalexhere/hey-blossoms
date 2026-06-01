@@ -4,6 +4,7 @@ import {
     inferGenderFromYoogisProduct,
     parseYoogisUrl,
 } from '@luxe/shared/product-taxonomy';
+import { extractPdpFromPage } from '../lib/pdp-extract.js';
 
 // ============================================================
 // Yoogi's Closet Scraper (Nuxt/Magento storefront)
@@ -124,10 +125,24 @@ export class YoogisclosetScraper extends BaseScraper {
             const women = allProducts.filter((p) => p.gender === 'women').length;
             console.log(`[Yoogi's Closet] Gender summary: ${men} men, ${women} women`);
 
-            return allProducts;
+            return await this.enrichProducts(allProducts);
         } finally {
             await this.closeBrowser();
         }
+    }
+
+    async enrichFromDetailPage(product) {
+        await this.navigateWithRetry(product.product_url, { waitAfter: 2500, waitUntil: 'domcontentloaded' });
+        const detail = await extractPdpFromPage(this.page, this.getBaseUrl(), 'yoogiscloset');
+        const parts = [];
+        if (product.description && !detail.description?.includes(product.description)) {
+            parts.push(product.description);
+        }
+        if (detail.description) parts.push(detail.description);
+        return {
+            images: this._dedupeImages(detail.images, this.getBaseUrl()),
+            description: parts.join('\n\n') || null,
+        };
     }
 
     async _extractFromPage() {

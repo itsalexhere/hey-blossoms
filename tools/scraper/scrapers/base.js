@@ -121,6 +121,15 @@ export class BaseScraper {
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                if (!this.browser) await this.launchBrowser();
+                if (!this.page || (typeof this.page.isClosed === 'function' && this.page.isClosed())) {
+                    this.page = await this.browser.newPage();
+                    const userAgent = this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
+                    await this.page.setUserAgent(userAgent);
+                    await this.page.setViewport({ width: 1366, height: 768 });
+                    await this.page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+                }
+
                 console.log(`[Attempt ${attempt}/${maxRetries}] Navigating to: ${url}`);
 
                 await this.page.goto(url, {
@@ -327,5 +336,138 @@ export class BaseScraper {
      */
     getPlatform() {
         return 'custom';
+    }
+
+    /** Strip HTML tags from description text. */
+    _stripHtml(html, maxLen = 5000) {
+        if (!html) return null;
+        const text = String(html).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        if (!text) return null;
+        return text.length > maxLen ? text.substring(0, maxLen) : text;
+    }
+
+    _normalizeImageUrl(url, baseUrl) {
+        if (!url) return null;
+        let u = String(url).trim();
+        if (!u || u.startsWith('data:')) return null;
+        if (u.startsWith('//')) u = 'https:' + u;
+        if (u.startsWith('/') && baseUrl) {
+            try {
+                u = new URL(u, baseUrl).href;
+            } catch {
+                return null;
+            }
+        }
+        return u.split('?')[0];
+    }
+
+    _dedupeImages(urls, baseUrl) {
+        const out = [];
+        const seen = new Set();
+        for (const raw of urls || []) {
+            const u = this._normalizeImageUrl(raw, baseUrl);
+            if (!u || seen.has(u)) continue;
+            seen.add(u);
+            out.push(u);
+        }
+        return out;
+    }
+
+    _applyDetailToProduct(product, detail) {
+        if (!detail) return false;
+        let changed = false;
+        if (detail.images?.length) {
+            product.images = detail.images;
+            product.image_url = detail.images[0];
+            changed = true;
+        }
+        if (detail.description && String(detail.description).trim()) {
+            product.description = String(detail.description).trim();
+            changed = true;
+        }
+        const detailPrice = Number(detail.price || 0);
+        const currentPrice = Number(product.price_idr || product.price_original || 0);
+        if (detailPrice > 0 && currentPrice <= 0) {
+            product.price_idr = detailPrice;
+            product.price_original = detailPrice;
+            product.currency = product.currency || 'IDR';
+            product.stock_status = 'available';
+            changed = true;
+        }
+        if (detail.stock_status && product.stock_status !== detail.stock_status) {
+            product.stock_status = detail.stock_status;
+            changed = true;
+        }
+        return changed;
+    }
+
+    _hasMeaningfulDescription(product) {
+        const d = String(product.description || '').trim();
+        if (!d) return false;
+        if (/^(condition|preloved condition):\s*/i.test(d) && d.length < 120) return false;
+        return d.length > 20;
+    }
+
+    _needsDetailEnrichment(product) {
+        if (!product?.product_url) return false;
+        const imgCount = product.images?.length || (product.image_url ? 1 : 0);
+        const price = Number(product.price_idr || product.price_original || 0);
+        return imgCount <= 1 || !this._hasMeaningfulDescription(product) || price <= 0;
+    }
+
+    /**
+     * Override in child scrapers to fetch gallery + description from PDP.
+     * @returns {Promise<{images?: string[], description?: string}|null>}
+     */
+    async enrichFromDetailPage(product) {
+        return null;
+    }
+
+    /**
+     * Visit each product detail page and merge images + description.
+     */
+    async enrichProducts(products) {
+        if (this.options.skipDetail) {
+            console.log(`[${this.getSourceName()}] Detail enrichment skipped (--skipDetail)`);
+            return products;
+        }
+
+        const targets = products.filter((p) => this._needsDetailEnrichment(p));
+        if (targets.length === 0) {
+            console.log(`[${this.getSourceName()}] All products already have detail data.`);
+            return products;
+        }
+
+        console.log(`[${this.getSourceName()}] Enriching ${targets.length}/${products.length} products from detail pages...`);
+
+        const delayMs = this.options.detailDelay ?? 1000;
+        let enriched = 0;
+        let browserWasClosed = !this.browser;
+
+        if (!this.browser) {
+            await this.launchBrowser();
+        }
+
+        for (let i = 0; i < targets.length; i++) {
+            const p = targets[i];
+            try {
+                const detail = await this.enrichFromDetailPage(p);
+                if (this._applyDetailToProduct(p, detail)) enriched++;
+            } catch (e) {
+                console.warn(`[${this.getSourceName()}] Detail failed: ${p.product_url} — ${e.message}`);
+            }
+            if (i < targets.length - 1) await this.sleep(delayMs);
+            if ((i + 1) % 25 === 0) {
+                console.log(`[${this.getSourceName()}] Detail progress: ${i + 1}/${targets.length} (${enriched} enriched)`);
+            }
+        }
+
+        console.log(`[${this.getSourceName()}] Detail enrichment done: ${enriched}/${targets.length} updated.`);
+
+        if (browserWasClosed && this.browser) {
+            await this.closeBrowser();
+        }
+
+        return products;
     }
 }

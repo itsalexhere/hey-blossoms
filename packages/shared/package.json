@@ -11,7 +11,8 @@
     "./db": "./src/db.js",
     "./supabase": "./src/supabase.js",
     "./scrape-targets": "./src/scrape-targets.js",
-    "./orders": "./src/orders.js"
+    "./orders": "./src/orders.js",
+    "./pricing": "./src/pricing.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2"

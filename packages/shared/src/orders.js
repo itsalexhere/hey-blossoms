@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from './supabase.js';
+import { computeSellingPrice } from './pricing.js';
 import { VIP_SOURCES } from './vip-config.js';
 
 const ORDER_STATUSES = ['pending', 'processing', 'completed', 'cancelled'];
@@ -9,9 +10,8 @@ async function getMarkupPercent() {
     return Number(data?.value ?? 20) || 0;
 }
 
-function applyMarkup(originalPrice, markupPercent) {
-    const base = Number(originalPrice || 0);
-    return Math.round(base * (1 + Number(markupPercent || 0) / 100));
+function applyMarkup(originalPrice, markupPercent, markupAddonIdr = null) {
+    return computeSellingPrice(originalPrice, markupPercent, markupAddonIdr);
 }
 
 async function generateOrderNumber(supabase) {
@@ -42,7 +42,7 @@ export async function createOrder({ customer_name, phone, address, notes, items 
 
     const { data: products, error: fetchErr } = await supabase
         .from('products')
-        .select('id, title, source, source_url, original_price, stock_status, stock_qty, is_active, brands(name), product_images(image_url, position)')
+        .select('id, title, source, source_url, original_price, markup_addon_idr, stock_status, stock_qty, is_active, brands(name), product_images(image_url, position)')
         .in('id', productIds)
         .in('source', VIP_SOURCES);
 
@@ -66,7 +66,7 @@ export async function createOrder({ customer_name, phone, address, notes, items 
             throw new Error(`Stok "${p.title}" hanya ${p.stock_qty}`);
         }
 
-        const unitPrice = applyMarkup(p.original_price, markup);
+        const unitPrice = applyMarkup(p.original_price, markup, p.markup_addon_idr);
         const lineTotal = unitPrice * qty;
         const imgs = (p.product_images || []).sort((a, b) => a.position - b.position);
 
