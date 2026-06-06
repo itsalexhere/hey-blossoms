@@ -16,6 +16,9 @@ export class BaseScraper {
         this.delay = options.delay || { min: 1000, max: 3000 };
         this.maxPages = options.maxPages || Infinity;
         this.startPage = options.startPage || 1;
+        this.maxDurationSeconds = options.maxDurationSeconds > 0 ? Number(options.maxDurationSeconds) : null;
+        this._scrapeStartTime = null;
+        this._timeLimitReached = false;
         this.userAgents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -423,6 +426,26 @@ export class BaseScraper {
         return null;
     }
 
+    beginScrapeTimer() {
+        this._scrapeStartTime = Date.now();
+        this._timeLimitReached = false;
+    }
+
+    elapsedScrapeSeconds() {
+        if (!this._scrapeStartTime) return 0;
+        return Math.round((Date.now() - this._scrapeStartTime) / 1000);
+    }
+
+    isTimeLimitReached() {
+        if (!this.maxDurationSeconds || !this._scrapeStartTime) return false;
+        if (this._timeLimitReached) return true;
+        if (this.elapsedScrapeSeconds() >= this.maxDurationSeconds) {
+            this._timeLimitReached = true;
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Visit each product detail page and merge images + description.
      */
@@ -449,6 +472,13 @@ export class BaseScraper {
         }
 
         for (let i = 0; i < targets.length; i++) {
+            if (this.isTimeLimitReached()) {
+                console.log(
+                    `[${this.getSourceName()}] ⏱️ Batas waktu ${this.maxDurationSeconds}s — stop enrichment (${enriched}/${targets.length} selesai)`
+                );
+                break;
+            }
+
             const p = targets[i];
             try {
                 const detail = await this.enrichFromDetailPage(p);
@@ -462,7 +492,8 @@ export class BaseScraper {
             }
         }
 
-        console.log(`[${this.getSourceName()}] Detail enrichment done: ${enriched}/${targets.length} updated.`);
+        const timeNote = this._timeLimitReached ? ' (batas waktu)' : '';
+        console.log(`[${this.getSourceName()}] Detail enrichment done: ${enriched}/${targets.length} updated${timeNote}.`);
 
         if (browserWasClosed && this.browser) {
             await this.closeBrowser();

@@ -24,6 +24,7 @@ export async function PATCH(request, { params }) {
             patch.slug = slugify(body.name);
         }
         if (body.parent_id !== undefined) patch.parent_id = body.parent_id || null;
+        if (body.is_visible !== undefined) patch.is_visible = !!body.is_visible;
 
         const supabase = getSupabaseAdmin();
         const { data, error } = await supabase.from('categories').update(patch).eq('id', id).select().maybeSingle();

@@ -35,6 +35,16 @@ export default function CategoriesPage() {
         const d = await res.json();
         if (d.success) load(); else alert('Gagal: ' + d.error);
     }
+    async function toggleVisible(id, isVisible) {
+        const res = await fetch(`/api/admin/categories/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_visible: isVisible }),
+        });
+        const d = await res.json();
+        if (d.success) load();
+        else alert('Gagal: ' + d.error);
+    }
 
     return (
         <div>
@@ -52,12 +62,15 @@ export default function CategoriesPage() {
                             <th style={th}>Nama</th>
                             <th style={th}>Slug</th>
                             <th style={th}>Jumlah Produk</th>
+                            <th style={th}>Status</th>
                             <th style={th}>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {items.map((c) => (
-                            <tr key={c.id} style={{ borderTop: `1px solid ${AC.border}` }}>
+                        {items.map((c) => {
+                            const visible = c.is_visible !== false;
+                            return (
+                            <tr key={c.id} style={{ borderTop: `1px solid ${AC.border}`, opacity: visible ? 1 : 0.55 }}>
                                 <td style={td}>
                                     {editId === c.id ? (
                                         <input value={editName} onChange={(e) => setEditName(e.target.value)} style={{ ...inputStyle, padding: '0.35rem 0.5rem' }} />
@@ -68,22 +81,35 @@ export default function CategoriesPage() {
                                 <td style={{ ...td, color: AC.muted }}>{c.slug}</td>
                                 <td style={td}>{c.product_count}</td>
                                 <td style={td}>
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: visible ? AC.success : AC.muted }}>
+                                        {visible ? 'Tampil' : 'Sembunyi'}
+                                    </span>
+                                </td>
+                                <td style={td}>
                                     {editId === c.id ? (
                                         <div style={{ display: 'flex', gap: 6 }}>
                                             <Button variant="gold" style={{ padding: '0.3rem 0.7rem' }} onClick={() => save(c.id)}>Simpan</Button>
                                             <Button variant="outline" style={{ padding: '0.3rem 0.7rem' }} onClick={() => setEditId(null)}>Batal</Button>
                                         </div>
                                     ) : (
-                                        <div style={{ display: 'flex', gap: 6 }}>
+                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                             <Button variant="outline" style={{ padding: '0.3rem 0.7rem' }} onClick={() => { setEditId(c.id); setEditName(c.name); }}>Edit</Button>
+                                            <Button
+                                                variant="outline"
+                                                style={{ padding: '0.3rem 0.7rem' }}
+                                                onClick={() => toggleVisible(c.id, !visible)}
+                                            >
+                                                {visible ? 'Sembunyikan' : 'Tampilkan'}
+                                            </Button>
                                             <Button variant="danger" style={{ padding: '0.3rem 0.7rem' }} onClick={() => remove(c.id)}>Hapus</Button>
                                         </div>
                                     )}
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                         {!loading && items.length === 0 && (
-                            <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: AC.muted }}>Belum ada kategori.</td></tr>
+                            <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: AC.muted }}>Belum ada kategori.</td></tr>
                         )}
                     </tbody>
                 </table>

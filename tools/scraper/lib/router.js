@@ -2,6 +2,7 @@ import { BanananinaScraper } from '../scrapers/banananina.js';
 import { ZetabagsScraper } from '../scrapers/zetabags.js';
 import { HuntstreetScraper } from '../scrapers/huntstreet.js';
 import { YoogisclosetScraper } from '../scrapers/yoogiscloset.js';
+import { ZzerScraper } from '../scrapers/zzer.js';
 
 const SCRAPER_MAP = {
     'banananina.co.id': BanananinaScraper,
@@ -12,6 +13,8 @@ const SCRAPER_MAP = {
     'huntstreet': HuntstreetScraper,
     'yoogiscloset.com': YoogisclosetScraper,
     'yoogiscloset': YoogisclosetScraper,
+    'zzer.com': ZzerScraper,
+    'zzer': ZzerScraper,
 };
 
 export function getScraperForUrl(url, options = {}) {
@@ -45,7 +48,7 @@ export function isValidUrl(url) {
 }
 
 export function getSupportedDomains() {
-    return ['banananina.co.id', 'zetabags.com', 'huntstreet.com', 'yoogiscloset.com'];
+    return ['banananina.co.id', 'zetabags.com', 'huntstreet.com', 'yoogiscloset.com', 'zzer.com'];
 }
 
 export function getSourceInfoFromUrl(url) {
@@ -56,6 +59,7 @@ export function getSourceInfoFromUrl(url) {
         'zetabags.com': { name: 'ZetaBags', baseUrl: 'https://zetabags.com', platform: 'shopify' },
         'huntstreet.com': { name: 'HuntStreet', baseUrl: 'https://www.huntstreet.com', platform: 'custom' },
         'yoogiscloset.com': { name: "Yoogi's Closet", baseUrl: 'https://www.yoogiscloset.com', platform: 'magento' },
+        'zzer.com': { name: 'ZZER', baseUrl: 'https://www.zzer.com', platform: 'custom' },
     };
 
     for (const [domain, info] of Object.entries(sourceMap)) {

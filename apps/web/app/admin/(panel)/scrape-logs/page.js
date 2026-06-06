@@ -57,7 +57,7 @@ export default function ScrapeLogsPage() {
 
     return (
         <div>
-            <PageTitle title="Log Scrape" subtitle="Riwayat eksekusi scraper" right={<Button variant="outline" onClick={load}>Refresh</Button>} />
+            <PageTitle title="Milestone" subtitle="Riwayat milestone product list" right={<Button variant="outline" onClick={load}>Refresh</Button>} />
             <Card style={{ marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     <input placeholder="Filter sumber..." value={source} onChange={(e) => setSource(e.target.value)} style={inputStyle} />
@@ -109,7 +109,7 @@ export default function ScrapeLogsPage() {
                                 </tr>
                             ))}
                             {!loading && logs.length === 0 && (
-                                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: AC.muted }}>Belum ada log scrape.</td></tr>
+                                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: AC.muted }}>Belum ada milestone.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -134,7 +134,7 @@ export default function ScrapeLogsPage() {
                             {detailMeta && (
                                 <p style={{ margin: '8px 0 0', fontSize: '0.82rem', color: AC.blue }}>
                                     {detailMeta.total} produk
-                                    {detailMeta.match_source === 'fallback' && ' (perkiraan dari waktu scrape — log lama)'}
+                                    {detailMeta.match_source === 'fallback' && ' (perkiraan dari waktu milestone — data lama)'}
                                 </p>
                             )}
                         </div>

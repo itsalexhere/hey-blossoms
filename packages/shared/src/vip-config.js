@@ -2,13 +2,15 @@
  * VIP catalog scope — only these sources and brands are kept in the app.
  */
 
-export const VIP_SOURCES = ['HuntStreet', 'ZetaBags', 'Banananina', "Yoogi's Closet"];
+export const VIP_SOURCES = ['HuntStreet', 'ZetaBags', 'Banananina', "Yoogi's Closet", 'ZZER'];
 
 export const VIP_BRANDS = ['Louis Vuitton', 'Dior', 'Loro Piana'];
 
 /** Scraper / legacy DB names → canonical VIP brand. */
 export const VIP_BRAND_ALIASES = {
     'Christian Dior': 'Dior',
+    'Louis Vuitton (LV)': 'Louis Vuitton',
+    LV: 'Louis Vuitton',
 };
 
 export function normalizeVipBrand(name) {

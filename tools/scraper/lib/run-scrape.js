@@ -27,6 +27,11 @@ export async function runScrape({
     gender,
     brand,
     categoryHint,
+    categoryTab,
+    categoryJobs,
+    maxApiPages,
+    maxProducts,
+    maxDurationSeconds,
     partialScrape = false,
     skipDetail = false,
 }) {
@@ -58,6 +63,11 @@ export async function runScrape({
     if (gender) scraperOptions.gender = gender;
     if (brand) scraperOptions.brand = brand;
     if (categoryHint) scraperOptions.categoryHint = categoryHint;
+    if (categoryTab) scraperOptions.categoryTab = categoryTab;
+    if (categoryJobs) scraperOptions.categoryJobs = categoryJobs;
+    if (maxApiPages) scraperOptions.maxApiPages = Number(maxApiPages);
+    if (maxProducts) scraperOptions.maxProducts = Number(maxProducts);
+    if (maxDurationSeconds) scraperOptions.maxDurationSeconds = Number(maxDurationSeconds);
 
     const scraper = getScraperForUrl(url, scraperOptions);
     let products = [];
@@ -140,6 +150,8 @@ export async function runScrape({
         total_products: validProducts.length,
         total_errors: totalErrors,
         duration_seconds: duration,
+        time_limit_reached: !!scraper._timeLimitReached,
+        max_duration_seconds: maxDurationSeconds ? Number(maxDurationSeconds) : null,
         detail_stats: {
             multi_photo: withGallery,
             with_description: withDesc,

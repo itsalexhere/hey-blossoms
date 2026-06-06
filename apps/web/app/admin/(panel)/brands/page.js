@@ -36,6 +36,16 @@ export default function BrandsPage() {
         const d = await res.json();
         if (d.success) load(); else alert('Gagal: ' + d.error);
     }
+    async function toggleVisible(id, isVisible) {
+        const res = await fetch(`/api/admin/brands/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_visible: isVisible }),
+        });
+        const d = await res.json();
+        if (d.success) load();
+        else alert('Gagal: ' + d.error);
+    }
 
     const filtered = items.filter((b) => b.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -55,12 +65,15 @@ export default function BrandsPage() {
                         <tr style={{ background: '#fafafa', textAlign: 'left' }}>
                             <th style={th}>Nama</th>
                             <th style={th}>Jumlah Produk</th>
+                            <th style={th}>Status</th>
                             <th style={th}>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.map((b) => (
-                            <tr key={b.id} style={{ borderTop: `1px solid ${AC.border}` }}>
+                        {filtered.map((b) => {
+                            const visible = b.is_visible !== false;
+                            return (
+                            <tr key={b.id} style={{ borderTop: `1px solid ${AC.border}`, opacity: visible ? 1 : 0.55 }}>
                                 <td style={td}>
                                     {editId === b.id ? (
                                         <input value={editName} onChange={(e) => setEditName(e.target.value)} style={{ ...inputStyle, padding: '0.35rem 0.5rem' }} />
@@ -70,22 +83,35 @@ export default function BrandsPage() {
                                 </td>
                                 <td style={td}>{b.product_count}</td>
                                 <td style={td}>
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: visible ? AC.success : AC.muted }}>
+                                        {visible ? 'Tampil' : 'Sembunyi'}
+                                    </span>
+                                </td>
+                                <td style={td}>
                                     {editId === b.id ? (
                                         <div style={{ display: 'flex', gap: 6 }}>
                                             <Button variant="gold" style={{ padding: '0.3rem 0.7rem' }} onClick={() => save(b.id)}>Simpan</Button>
                                             <Button variant="outline" style={{ padding: '0.3rem 0.7rem' }} onClick={() => setEditId(null)}>Batal</Button>
                                         </div>
                                     ) : (
-                                        <div style={{ display: 'flex', gap: 6 }}>
+                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                             <Button variant="outline" style={{ padding: '0.3rem 0.7rem' }} onClick={() => { setEditId(b.id); setEditName(b.name); }}>Edit</Button>
+                                            <Button
+                                                variant="outline"
+                                                style={{ padding: '0.3rem 0.7rem' }}
+                                                onClick={() => toggleVisible(b.id, !visible)}
+                                            >
+                                                {visible ? 'Sembunyikan' : 'Tampilkan'}
+                                            </Button>
                                             <Button variant="danger" style={{ padding: '0.3rem 0.7rem' }} onClick={() => remove(b.id)}>Hapus</Button>
                                         </div>
                                     )}
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                         {!loading && filtered.length === 0 && (
-                            <tr><td colSpan={3} style={{ padding: '2rem', textAlign: 'center', color: AC.muted }}>Tidak ada brand.</td></tr>
+                            <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: AC.muted }}>Tidak ada brand.</td></tr>
                         )}
                     </tbody>
                 </table>

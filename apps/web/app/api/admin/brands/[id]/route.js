@@ -23,6 +23,7 @@ export async function PATCH(request, { params }) {
             patch.name = body.name;
             patch.slug = slugify(body.name);
         }
+        if (body.is_visible !== undefined) patch.is_visible = !!body.is_visible;
         const supabase = getSupabaseAdmin();
         const { data, error } = await supabase.from('brands').update(patch).eq('id', id).select().maybeSingle();
         if (error) throw new Error(error.message);

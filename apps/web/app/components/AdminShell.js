@@ -10,8 +10,8 @@ const NAV = [
     { href: '/admin/orders', label: 'Pesanan', icon: '🛒' },
     { href: '/admin/categories', label: 'Kategori', icon: '◳' },
     { href: '/admin/brands', label: 'Brand', icon: '◈' },
-    { href: '/admin/scraper', label: 'Scraper', icon: '⟳' },
-    { href: '/admin/scrape-logs', label: 'Log Scrape', icon: '☰' },
+    { href: '/admin/scraper', label: 'Product List', icon: '⟳' },
+    { href: '/admin/scrape-logs', label: 'Milestone', icon: '☰' },
     { href: '/admin/errors', label: 'Error Log', icon: '⚠' },
     { href: '/admin/settings', label: 'Pengaturan', icon: '⚙' },
 ];

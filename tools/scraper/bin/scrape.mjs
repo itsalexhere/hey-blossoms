@@ -9,24 +9,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-    getScraperForUrl,
-    isValidUrl,
-    isSupportedUrl,
-    getSourceInfoFromUrl,
-    getSupportedDomains,
-} from '../lib/router.js';
-import { isVipSource } from '@luxe/shared/vip-config';
-import { toIDR } from '@luxe/shared/currency';
-import {
-    getOrCreateSource,
-    createSession,
-    updateSession,
-    insertProducts,
-    markMissingSoldOut,
-    dedupeActiveProducts,
-    logError,
-} from '@luxe/shared/db';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..', '..', '..');
@@ -53,6 +35,11 @@ function parseArgs(argv) {
         else if (a === '--gender') args.gender = argv[++i];
         else if (a === '--brand') args.brand = argv[++i];
         else if (a === '--categoryHint') args.categoryHint = argv[++i];
+        else if (a === '--categoryTab') args.categoryTab = argv[++i];
+        else if (a === '--categoryJobs') args.categoryJobsRaw = argv[++i];
+        else if (a === '--maxApiPages') args.maxApiPages = Number(argv[++i]);
+        else if (a === '--maxProducts') args.maxProducts = Number(argv[++i]);
+        else if (a === '--maxDuration') args.maxDurationSeconds = Number(argv[++i]);
         else if (a === '--partial') args.partialScrape = true;
         else if (a === '--skipDetail') args.skipDetail = true;
         else if (a === '--help' || a === '-h') args.help = true;
@@ -60,7 +47,7 @@ function parseArgs(argv) {
     return args;
 }
 
-function printHelp() {
+function printHelp(getDomains = () => []) {
     console.log(`luxe-scrape — VIP catalog scraper (local only)
 
 Usage:
@@ -73,24 +60,49 @@ Options:
   --gender        men / women (HuntStreet, ZetaBags)
   --brand         Filter brand e.g. "Louis Vuitton"
   --categoryHint  Category hint for taxonomy
+  --categoryTab   ZZER single category tab (legacy)
+  --categoryJobs  ZZER tabs comma-separated e.g. Bags,Shoes (default: all)
+  --maxApiPages   ZZER API pagination limit
+  --maxProducts   ZZER max products total (test mode)
+  --maxDuration   Stop after N seconds; collected data still saved
   --partial       Skip global sold-out sweep
   --skipDetail    Skip PDP enrichment (gallery + description)
   --help          Show this help
 
-Supported: ${getSupportedDomains().join(', ')}
+Supported: ${getDomains().join(', ')}
 `);
 }
 
 loadEnv();
 
+const {
+    getScraperForUrl,
+    isValidUrl,
+    isSupportedUrl,
+    getSourceInfoFromUrl,
+    getSupportedDomains,
+} = await import('../lib/router.js');
+const { isVipSource } = await import('@luxe/shared/vip-config');
+const { ZZER_CATEGORY_JOBS } = await import('@luxe/shared/scrape-targets');
+const { toIDR } = await import('@luxe/shared/currency');
+const {
+    getOrCreateSource,
+    createSession,
+    updateSession,
+    insertProducts,
+    markMissingSoldOut,
+    dedupeActiveProducts,
+    logError,
+} = await import('@luxe/shared/db');
+
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
-    printHelp();
+    printHelp(getSupportedDomains);
     process.exit(0);
 }
 
 if (!args.url) {
-    printHelp();
+    printHelp(getSupportedDomains);
     process.exit(1);
 }
 
@@ -126,6 +138,17 @@ async function main() {
     if (args.gender) scraperOptions.gender = args.gender;
     if (args.brand) scraperOptions.brand = args.brand;
     if (args.categoryHint) scraperOptions.categoryHint = args.categoryHint;
+    if (args.categoryTab) scraperOptions.categoryTab = args.categoryTab;
+    if (args.categoryJobsRaw) {
+        const tabs = String(args.categoryJobsRaw).split(',').map((t) => t.trim()).filter(Boolean);
+        scraperOptions.categoryJobs = ZZER_CATEGORY_JOBS.filter((c) => tabs.includes(c.tab));
+        if (!scraperOptions.categoryJobs.length) scraperOptions.categoryJobs = ZZER_CATEGORY_JOBS;
+    } else if (args.brand && getSourceInfoFromUrl(args.url)?.name === 'ZZER') {
+        scraperOptions.categoryJobs = ZZER_CATEGORY_JOBS;
+    }
+    if (args.maxApiPages) scraperOptions.maxApiPages = args.maxApiPages;
+    if (args.maxProducts) scraperOptions.maxProducts = args.maxProducts;
+    if (args.maxDurationSeconds) scraperOptions.maxDurationSeconds = args.maxDurationSeconds;
 
     const scraper = getScraperForUrl(args.url, scraperOptions);
     let products = [];
@@ -209,6 +232,9 @@ async function main() {
     console.log(`Sold out:    ${soldOutResult.marked}`);
     console.log(`Errors:      ${totalErrors}`);
     console.log(`Duration:    ${duration}s`);
+    if (scraper._timeLimitReached) {
+        console.log(`Time limit:  ${args.maxDurationSeconds}s reached — partial data saved`);
+    }
 }
 
 main().catch((err) => {

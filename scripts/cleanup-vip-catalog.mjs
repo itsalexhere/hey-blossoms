@@ -1,5 +1,5 @@
 /**
- * Remove products outside VIP scope + invalid rows (N/A price, ZZER).
+ * Remove products outside VIP scope + invalid rows (N/A price).
  * Run: node scripts/cleanup-vip-catalog.mjs
  */
 import fs from 'node:fs';
@@ -36,11 +36,6 @@ function chunk(arr, size) {
     const out = [];
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
     return out;
-}
-
-function isZzerProduct(p) {
-    const hay = `${p.source || ''} ${p.title || ''} ${p.source_url || ''}`;
-    return /zzer/i.test(hay);
 }
 
 function isNaPrice(p) {
@@ -98,7 +93,7 @@ const allProducts = await fetchAllProducts();
 console.log(`Loaded ${allProducts.length} products from DB`);
 
 const toDelete = new Set();
-const reasons = { non_vip_source: 0, non_vip_brand: 0, na_price: 0, zzer: 0 };
+const reasons = { non_vip_source: 0, non_vip_brand: 0, na_price: 0 };
 const toFixBrand = [];
 
 for (const p of allProducts) {
@@ -106,10 +101,6 @@ for (const p of allProducts) {
     const normalized = normalizeVipBrand(brandName);
     let remove = false;
 
-    if (isZzerProduct(p)) {
-        remove = true;
-        reasons.zzer++;
-    }
     if (!isVipSource(p.source)) {
         remove = true;
         reasons.non_vip_source++;
@@ -149,7 +140,6 @@ console.log(`Deleted ${deleteIds.length} products:`);
 console.log(`  - non-VIP source: ${reasons.non_vip_source} (may overlap)`);
 console.log(`  - non-VIP brand: ${reasons.non_vip_brand} (may overlap)`);
 console.log(`  - N/A price (0): ${reasons.na_price} (may overlap)`);
-console.log(`  - ZZER: ${reasons.zzer} (may overlap)`);
 
 const { data: allBrands } = await supabase.from('brands').select('id, name');
 let deletedBrands = 0;

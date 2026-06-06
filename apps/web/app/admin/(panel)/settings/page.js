@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { AC, PageTitle, Card, Button, inputStyle, formatIDR } from '../../../components/admin-ui';
+import StoreSocialLinks from '../../../components/StoreSocialLinks';
 
 const SECTIONS = [
     { id: 'branding', label: 'Branding', hint: 'Logo & nama toko' },
+    { id: 'social', label: 'Sosial Media', hint: 'Instagram & Facebook' },
     { id: 'whatsapp', label: 'WhatsApp', hint: 'Tombol floating' },
     { id: 'markup', label: 'Markup', hint: 'Harga global %' },
     { id: 'labels', label: 'Label Tag', hint: 'Tag di produk' },
@@ -12,6 +14,13 @@ const SECTIONS = [
 const th = { padding: '0.75rem 1rem', fontWeight: 600, color: AC.muted, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' };
 const td = { padding: '0.65rem 1rem', verticalAlign: 'middle' };
 const lbl = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: AC.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' };
+
+function normalizeSocialUrl(url) {
+    const u = String(url || '').trim();
+    if (!u) return '';
+    if (/^https?:\/\//i.test(u)) return u;
+    return `https://${u}`;
+}
 
 function SectionHead({ title, desc }) {
     return (
@@ -27,6 +36,8 @@ export default function SettingsPage() {
     const [markup, setMarkup] = useState('');
     const [storeName, setStoreName] = useState('');
     const [logoUrl, setLogoUrl] = useState('');
+    const [instagramUrl, setInstagramUrl] = useState('');
+    const [facebookUrl, setFacebookUrl] = useState('');
     const [waNumber, setWaNumber] = useState('');
     const [waMessage, setWaMessage] = useState('');
     const [labelRows, setLabelRows] = useState([]);
@@ -58,6 +69,8 @@ export default function SettingsPage() {
                     setMarkup(s.markup_percent ?? '20');
                     setStoreName(s.store_name ?? 'HEY BLOSSOM');
                     setLogoUrl(s.store_logo_url ?? '');
+                    setInstagramUrl(s.instagram_url ?? '');
+                    setFacebookUrl(s.facebook_url ?? '');
                     setWaNumber(s.whatsapp_number ?? '');
                     setWaMessage(s.whatsapp_message ?? 'Halo, saya tertarik dengan produk di toko Anda.');
                 }
@@ -123,6 +136,8 @@ export default function SettingsPage() {
                 markup_percent: markup,
                 store_name: storeName,
                 store_logo_url: logoUrl,
+                instagram_url: normalizeSocialUrl(instagramUrl),
+                facebook_url: normalizeSocialUrl(facebookUrl),
                 whatsapp_number: waNumber.replace(/\D/g, ''),
                 whatsapp_message: waMessage,
             }),
@@ -240,6 +255,45 @@ export default function SettingsPage() {
                                     <p style={{ margin: '10px 0 0', fontSize: '0.8rem', color: AC.muted, lineHeight: 1.45 }}>
                                         Tampilan di header storefront & sidebar admin.
                                     </p>
+                                </div>
+                            </div>
+                        </Card>
+                    )}
+
+                    {section === 'social' && (
+                        <Card>
+                            <SectionHead
+                                title="Sosial Media"
+                                desc="Ikon Instagram dan Facebook di pojok kanan header (setelah Keranjang), dalam pill terpisah. Kosongkan jika tidak ingin ditampilkan."
+                            />
+                            <div className="settings-split">
+                                <div className="settings-split-main">
+                                    <label style={lbl}>URL Instagram</label>
+                                    <input
+                                        value={instagramUrl}
+                                        onChange={(e) => { setInstagramUrl(e.target.value); setDirty(true); }}
+                                        placeholder="https://instagram.com/username"
+                                        style={{ ...inputStyle, width: '100%', marginBottom: 16 }}
+                                    />
+                                    <label style={lbl}>URL Facebook</label>
+                                    <input
+                                        value={facebookUrl}
+                                        onChange={(e) => { setFacebookUrl(e.target.value); setDirty(true); }}
+                                        placeholder="https://facebook.com/page"
+                                        style={{ ...inputStyle, width: '100%' }}
+                                    />
+                                    <p style={{ margin: '12px 0 0', fontSize: '0.82rem', color: AC.muted, lineHeight: 1.45 }}>
+                                        Setelah diisi, klik <strong>Simpan Pengaturan</strong> lalu refresh halaman toko.
+                                    </p>
+                                </div>
+                                <div className="settings-split-aside">
+                                    <div className="settings-preview-label">Preview header</div>
+                                    <div className="settings-social-preview">
+                                        <StoreSocialLinks instagram_url={instagramUrl} facebook_url={facebookUrl} />
+                                        {!instagramUrl.trim() && !facebookUrl.trim() && (
+                                            <span style={{ fontSize: '0.85rem', color: AC.muted }}>Isi URL di kiri untuk melihat ikon</span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </Card>

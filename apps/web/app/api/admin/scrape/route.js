@@ -3,7 +3,7 @@ import { getCurrentAdmin } from '@/lib/supabase/server';
 import { runScrape } from '@luxe/scraper/run-scrape';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 900;
 
 export async function POST(request) {
     const admin = await getCurrentAdmin();
@@ -15,7 +15,7 @@ export async function POST(request) {
         return NextResponse.json(
             {
                 success: false,
-                message: 'Scraper tidak bisa dijalankan di Vercel. Jalankan di laptop lokal (Laragon): buka http://localhost:3000/admin/scraper atau pakai npm run scrape di terminal.',
+                message: 'Product List tidak bisa dijalankan di Vercel. Jalankan di laptop lokal (Laragon): buka http://localhost:3000/admin/scraper atau pakai perintah terminal di halaman Product List.',
             },
             { status: 503 }
         );
@@ -30,6 +30,11 @@ export async function POST(request) {
             gender: body.gender,
             brand: body.brand,
             categoryHint: body.categoryHint,
+            categoryTab: body.categoryTab,
+            categoryJobs: body.categoryJobs,
+            maxApiPages: body.maxApiPages,
+            maxProducts: body.maxProducts,
+            maxDurationSeconds: body.maxDurationSeconds,
             partialScrape: !!body.partialScrape,
             skipDetail: !!body.skipDetail,
         });
@@ -44,7 +49,7 @@ export async function POST(request) {
         return NextResponse.json(result);
     } catch (error) {
         return NextResponse.json(
-            { success: false, message: error.message || 'Scrape gagal' },
+            { success: false, message: error.message || 'Sinkronisasi gagal' },
             { status: 500 }
         );
     }

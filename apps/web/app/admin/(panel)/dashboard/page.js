@@ -64,7 +64,7 @@ export default function DashboardPage() {
                 </Card>
 
                 <Card>
-                    <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Scrape Terbaru</h3>
+                    <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Milestone Terbaru</h3>
                     {(data.recentLogs || []).length === 0 && <div style={{ color: AC.muted, fontSize: '0.9rem' }}>Belum ada log.</div>}
                     {(data.recentLogs || []).map((log) => (
                         <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${AC.border}`, fontSize: '0.85rem' }}>

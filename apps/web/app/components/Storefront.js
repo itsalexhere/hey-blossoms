@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { getWishlist, toggleWishlist } from '@/lib/wishlist';
 import { getCart, getCartCount, addToCart, updateCartQty, removeFromCart, clearCart } from '@/lib/cart';
 import ProductGallery from './ProductGallery';
+import StoreSocialLinks from './StoreSocialLinks';
 
 const PAGE = 24;
 
@@ -24,6 +25,7 @@ export default function Storefront() {
     const [priceBuckets, setPriceBuckets] = useState([]);
     const [brands, setBrands] = useState([]);
     const [branding, setBranding] = useState({ store_name: 'LUXE', store_logo_url: '' });
+    const [social, setSocial] = useState({ instagram_url: '', facebook_url: '' });
     const [sourceLabels, setSourceLabels] = useState({});
 
     const [storeSearch, setStoreSearch] = useState('');
@@ -78,6 +80,7 @@ export default function Storefront() {
                     setPriceBuckets(d.priceBuckets || []);
                     setBrands(d.brands || []);
                     if (d.branding) setBranding(d.branding);
+                    if (d.social) setSocial(d.social);
                     if (d.sourceLabels) setSourceLabels(d.sourceLabels);
                 }
             })
@@ -316,45 +319,50 @@ export default function Storefront() {
             <div className="bg-animated"></div>
 
             <nav className="minimal-nav">
-                <div className="logo">
-                    {branding.store_logo_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={branding.store_logo_url} alt={branding.store_name} style={{ height: 38, width: 'auto', objectFit: 'contain' }} />
-                    ) : (
-                        <>
-                            {branding.store_name}
-                            <span>.</span>
-                        </>
-                    )}
+                <div className="nav-brand-block">
+                    <div className="logo">
+                        {branding.store_logo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={branding.store_logo_url} alt={branding.store_name} className="store-logo" />
+                        ) : (
+                            <>
+                                {branding.store_name}
+                                <span>.</span>
+                            </>
+                        )}
+                    </div>
                 </div>
-                <div className="nav-links">
-                    <a href="#" className="active nav-link-desktop" onClick={(e) => e.preventDefault()}>
-                        Boutique Storefront
-                    </a>
-                    <a
-                        href="#"
-                        className="nav-action"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            setShowWishlist(true);
-                        }}
-                    >
-                        <span className="nav-action-icon" aria-hidden="true">{'\u2661'}</span>
-                        <span className="nav-action-text">Wishlist</span>
-                        <span className="nav-action-count">({wishlistIds.length})</span>
-                    </a>
-                    <a
-                        href="#"
-                        className="nav-action"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            openCart('cart');
-                        }}
-                    >
-                        <span className="nav-action-icon" aria-hidden="true">{'\u{1F6D2}'}</span>
-                        <span className="nav-action-text">Keranjang</span>
-                        <span className="nav-action-count">({cartCount})</span>
-                    </a>
+                <div className="nav-end">
+                    <div className="nav-actions">
+                        <a href="#" className="active nav-link-desktop" onClick={(e) => e.preventDefault()}>
+                            Boutique Storefront
+                        </a>
+                        <a
+                            href="#"
+                            className="nav-action"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                setShowWishlist(true);
+                            }}
+                        >
+                            <span className="nav-action-icon" aria-hidden="true">{'\u2661'}</span>
+                            <span className="nav-action-text">Wishlist</span>
+                            <span className="nav-action-count">({wishlistIds.length})</span>
+                        </a>
+                        <a
+                            href="#"
+                            className="nav-action"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                openCart('cart');
+                            }}
+                        >
+                            <span className="nav-action-icon" aria-hidden="true">{'\u{1F6D2}'}</span>
+                            <span className="nav-action-text">Keranjang</span>
+                            <span className="nav-action-count">({cartCount})</span>
+                        </a>
+                    </div>
+                    <StoreSocialLinks instagram_url={social.instagram_url} facebook_url={social.facebook_url} />
                 </div>
             </nav>
 

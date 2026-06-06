@@ -11,6 +11,37 @@ import { VIP_SOURCES, VIP_BRANDS, VIP_LEAF_SLUGS, buildStoreCategoryGroups } fro
 
 let _markupCache = { value: null, at: 0 };
 let _genderColumnCache = null;
+let _hiddenTaxonomyCache = { brandIds: [], categoryIds: [], at: 0 };
+
+async function getHiddenTaxonomyIds(supabase) {
+    if (Date.now() - _hiddenTaxonomyCache.at < 30000) {
+        return { brandIds: _hiddenTaxonomyCache.brandIds, categoryIds: _hiddenTaxonomyCache.categoryIds };
+    }
+    let brandIds = [];
+    let categoryIds = [];
+    const { data: hiddenBrands, error: brandErr } = await supabase
+        .from('brands')
+        .select('id')
+        .eq('is_visible', false);
+    if (!brandErr) brandIds = (hiddenBrands || []).map((b) => b.id);
+    const { data: hiddenCats, error: catErr } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('is_visible', false);
+    if (!catErr) categoryIds = (hiddenCats || []).map((c) => c.id);
+    _hiddenTaxonomyCache = { brandIds, categoryIds, at: Date.now() };
+    return { brandIds, categoryIds };
+}
+
+function applyHiddenTaxonomyFilters(query, hiddenBrandIds, hiddenCategoryIds) {
+    if (hiddenBrandIds.length) {
+        query = query.or(`brand_id.is.null,brand_id.not.in.(${hiddenBrandIds.join(',')})`);
+    }
+    if (hiddenCategoryIds.length) {
+        query = query.or(`category_id.is.null,category_id.not.in.(${hiddenCategoryIds.join(',')})`);
+    }
+    return query;
+}
 
 async function hasGenderColumn(supabase) {
     if (_genderColumnCache === true) return true;
@@ -126,6 +157,21 @@ export async function getStoreBranding() {
     };
 }
 
+/** Instagram & Facebook links for storefront header. */
+export async function getSocialSettings() {
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', ['instagram_url', 'facebook_url']);
+    const map = {};
+    (data || []).forEach((r) => (map[r.key] = r.value));
+    return {
+        instagram_url: (map.instagram_url || '').trim(),
+        facebook_url: (map.facebook_url || '').trim(),
+    };
+}
+
 /** WhatsApp contact for floating button. */
 export async function getWhatsAppSettings() {
     const supabase = getSupabaseAdmin();
@@ -160,15 +206,18 @@ export async function getStoreProducts({
 } = {}) {
     const supabase = getSupabaseAdmin();
     const markup = await getMarkupPercent();
+    const { brandIds: hiddenBrandIds, categoryIds: hiddenCategoryIds } = await getHiddenTaxonomyIds(supabase);
 
     let brandId = null;
     let categoryIds = null;
     if (brand) {
-        const { data: br } = await supabase.from('brands').select('id').ilike('name', brand).maybeSingle();
-        if (!br) return { products: [], total: 0, markup, limit, offset };
+        const { data: br } = await supabase.from('brands').select('id, is_visible').ilike('name', brand).maybeSingle();
+        if (!br || br.is_visible === false) return { products: [], total: 0, markup, limit, offset };
         brandId = br.id;
     }
     if (category) {
+        const { data: catRow } = await supabase.from('categories').select('id, is_visible').eq('slug', category).maybeSingle();
+        if (!catRow || catRow.is_visible === false) return { products: [], total: 0, markup, limit, offset };
         categoryIds = await resolveCategoryIds(supabase, category);
         if (!categoryIds?.length) return { products: [], total: 0, markup, limit, offset };
     }
@@ -198,6 +247,8 @@ export async function getStoreProducts({
     if (minPrice != null && minPrice !== '') query = query.gte('original_price', Number(minPrice) / factor);
     if (maxPrice != null && maxPrice !== '') query = query.lte('original_price', Number(maxPrice) / factor);
 
+    query = applyHiddenTaxonomyFilters(query, hiddenBrandIds, hiddenCategoryIds);
+
     if (sort === 'cheapest') query = query.order('original_price', { ascending: true });
     else if (sort === 'expensive') query = query.order('original_price', { ascending: false });
     else if (sort === 'title_asc') query = query.order('title', { ascending: true });
@@ -221,13 +272,14 @@ export async function getStoreProduct(id) {
     const { data, error } = await supabase
         .from('products')
         .select(
-            'id, title, source, source_url, description, stock_status, stock_qty, original_price, markup_addon_idr, scraped_at, brands(name), categories(name, slug), product_images(image_url, position)'
+            'id, title, source, source_url, description, stock_status, stock_qty, original_price, markup_addon_idr, scraped_at, brand_id, category_id, brands(name, is_visible), categories(name, slug, is_visible), product_images(image_url, position)'
         )
         .eq('id', id)
         .maybeSingle();
 
     if (error) throw new Error(`getStoreProduct failed: ${error.message}`);
     if (!data) return null;
+    if (data.brands?.is_visible === false || data.categories?.is_visible === false) return null;
 
     const images = (data.product_images || []).sort((a, b) => a.position - b.position);
     const imageUrls = images.map((i) => upgradeStoreImageUrl(i.image_url)).filter(Boolean);
@@ -250,12 +302,21 @@ export async function getStoreProduct(id) {
 /** Categories grouped for storefront filter dropdown (VIP hierarchy). */
 export async function getStoreCategoryGroups() {
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
+    let query = supabase
         .from('categories')
-        .select('id, name, slug, parent_id')
+        .select('id, name, slug, parent_id, is_visible')
         .in('slug', [...VIP_LEAF_SLUGS, 'apparel', 'fashion-goods'])
         .order('name');
-    if (error) throw new Error(`getStoreCategoryGroups failed: ${error.message}`);
+    const { data, error } = await query.eq('is_visible', true);
+    if (error) {
+        const fallback = await supabase
+            .from('categories')
+            .select('id, name, slug, parent_id')
+            .in('slug', [...VIP_LEAF_SLUGS, 'apparel', 'fashion-goods'])
+            .order('name');
+        if (fallback.error) throw new Error(`getStoreCategoryGroups failed: ${fallback.error.message}`);
+        return buildStoreCategoryGroups(fallback.data || []);
+    }
     return buildStoreCategoryGroups(data || []);
 }
 
@@ -266,16 +327,29 @@ export async function getStoreCategories() {
         .from('categories')
         .select('id, name, slug')
         .in('slug', VIP_LEAF_SLUGS)
+        .eq('is_visible', true)
         .order('name');
-    if (error) throw new Error(`getStoreCategories failed: ${error.message}`);
+    if (error) {
+        const fallback = await supabase
+            .from('categories')
+            .select('id, name, slug')
+            .in('slug', VIP_LEAF_SLUGS)
+            .order('name');
+        if (fallback.error) throw new Error(`getStoreCategories failed: ${fallback.error.message}`);
+        return fallback.data || [];
+    }
     return data || [];
 }
 
 /** Distinct brands for the storefront brand filter (VIP only). */
 export async function getStoreBrands() {
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase.from('brands').select('id, name').order('name');
-    if (error) throw new Error(`getStoreBrands failed: ${error.message}`);
+    const { data, error } = await supabase.from('brands').select('id, name').eq('is_visible', true).order('name');
+    if (error) {
+        const fallback = await supabase.from('brands').select('id, name').order('name');
+        if (fallback.error) throw new Error(`getStoreBrands failed: ${fallback.error.message}`);
+        return (fallback.data || []).filter((b) => VIP_BRANDS.includes(b.name));
+    }
     return (data || []).filter((b) => VIP_BRANDS.includes(b.name));
 }
 

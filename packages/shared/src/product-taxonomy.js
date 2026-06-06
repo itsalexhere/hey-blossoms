@@ -204,6 +204,60 @@ export const YOOGIS_DESIGNER_SLUGS = {
     'loro-piana': 'Loro Piana',
 };
 
+/** ZZER category tab label → VIP category display hint. */
+export const ZZER_CATEGORY_TABS = {
+    Bags: 'Bag',
+    Clothing: 'Tops',
+    Shoes: 'Shoes',
+    Accessories: 'Jewelry/Accessories',
+    Jewelry: 'Jewelry/Accessories',
+};
+
+/** ZZER firstCategoryId → VIP category display hint (from API payloads). */
+export const ZZER_CATEGORY_BY_ID = {
+    8: 'Tops',
+    78: 'Bag',
+    153: 'Jewelry/Accessories',
+    154: 'Shoes',
+    287: 'Jewelry/Accessories',
+};
+
+/**
+ * Gender from ZZER productList API fields (if present).
+ * @returns {'men'|'women'|null}
+ */
+export function inferGenderFromZzerApi(product = {}) {
+    const parts = [
+        product.sex,
+        product.gender,
+        product.crowdType,
+        product.applicableCrowd,
+        product.crowdName,
+        product.suitableCrowd,
+        product.适用人群,
+    ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+    if (!parts) return null;
+    if (/男|men|male|homme|gentleman/.test(parts)) return 'men';
+    if (/女|women|female|femme|ladies|lady/.test(parts)) return 'women';
+    return null;
+}
+
+/** Gender inference for ZZER mixed feed (title + optional API + category hint). */
+export function inferGenderFromZzerProduct(title, categoryHint = '', apiProduct = null) {
+    const fromApi = apiProduct ? inferGenderFromZzerApi(apiProduct) : null;
+    if (fromApi) return fromApi;
+
+    const hay = `${title} ${categoryHint}`.toLowerCase();
+    if (/男款|男装|男士|男式|for men|\bmen\b|men'?s\b|mens\b|homme/.test(hay)) return 'men';
+    if (/女款|女装|女士|女式|for women|\bwomen\b|women'?s\b|womens\b|femme|ladies/.test(hay)) return 'women';
+
+    return inferGenderFromYoogisProduct(title, categoryHint);
+}
+
 export function inferGenderFromYoogisProduct(title, categoryHint = '') {
     const hay = `${title} ${categoryHint}`.toLowerCase();
 

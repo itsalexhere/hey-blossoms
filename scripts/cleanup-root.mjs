@@ -50,7 +50,7 @@ for (const item of ['data', 'output', 'database', 'data.json']) {
 }
 
 // Orphan scrapers
-for (const item of ['utils/scrapers/komehyo.js', 'utils/scrapers/zzer.js']) {
+for (const item of ['utils/scrapers/komehyo.js']) {
     move(item, dirs.orphanScrapers);
 }
 

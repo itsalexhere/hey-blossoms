@@ -3,7 +3,38 @@
  * Run from Admin → Scraper.
  */
 
-export { VIP_SOURCES as CURATED_SITES } from './vip-config.js';
+import { VIP_SOURCES, VIP_BRANDS } from './vip-config.js';
+
+export { VIP_SOURCES as CURATED_SITES };
+
+/** Urutan kategori ZZER dalam satu brand. */
+const ZZER_CATEGORY_TAB_ORDER = ['Bags', 'Shoes', 'Clothing', 'Accessories', 'Jewelry'];
+
+function brandSortIndex(brand) {
+    const idx = VIP_BRANDS.indexOf(brand);
+    return idx >= 0 ? idx : VIP_BRANDS.length;
+}
+
+function sortTargetsForAdmin(targets) {
+    return [...targets].sort((a, b) => {
+        const byBrand = brandSortIndex(a.brand) - brandSortIndex(b.brand);
+        if (byBrand !== 0) return byBrand;
+
+        const genderOrder = (g) => (g === 'men' ? 0 : g === 'women' ? 1 : 2);
+        const byGender = genderOrder(a.gender) - genderOrder(b.gender);
+        if (byGender !== 0) return byGender;
+
+        if (a.categoryTab && b.categoryTab) {
+            const ca = ZZER_CATEGORY_TAB_ORDER.indexOf(a.categoryTab);
+            const cb = ZZER_CATEGORY_TAB_ORDER.indexOf(b.categoryTab);
+            const ia = ca >= 0 ? ca : 99;
+            const ib = cb >= 0 ? cb : 99;
+            if (ia !== ib) return ia - ib;
+        }
+
+        return String(a.label).localeCompare(String(b.label));
+    });
+}
 
 export const HUNTSTREET_TARGETS = [
     {
@@ -176,6 +207,37 @@ export const BANANANINA_TARGETS = [
     },
 ];
 
+const ZZER_BASE = 'https://www.zzer.com/';
+
+/** Semua tab kategori yang di-loop dalam satu job per brand. */
+export const ZZER_CATEGORY_JOBS = [
+    { tab: 'Bags', hint: 'Bag', maxApiPages: 30 },
+    { tab: 'Shoes', hint: 'Shoes', maxApiPages: 15 },
+    { tab: 'Clothing', hint: 'Tops', maxApiPages: 20 },
+    { tab: 'Accessories', hint: 'Jewelry/Accessories', maxApiPages: 10 },
+    { tab: 'Jewelry', hint: 'Jewelry/Accessories', maxApiPages: 10 },
+];
+
+function buildZzerTargets() {
+    return VIP_BRANDS.map((brand) => {
+        const slug = brand.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        return {
+            id: `zzer_${slug}`,
+            site: 'ZZER',
+            label: `${brand} — Semua Kategori`,
+            url: ZZER_BASE,
+            gender: null,
+            brand,
+            categoryJobs: ZZER_CATEGORY_JOBS,
+            maxPages: 30,
+            maxDurationSeconds: 3600,
+            partialScrape: true,
+        };
+    });
+}
+
+export const ZZER_TARGETS = buildZzerTargets();
+
 export const YOOGIS_TARGETS = [
     {
         id: 'yc_louis_vuitton',
@@ -189,10 +251,16 @@ export const YOOGIS_TARGETS = [
     },
 ];
 
-export const ALL_SCRAPE_TARGETS = [...HUNTSTREET_TARGETS, ...ZETABAGS_TARGETS, ...BANANANINA_TARGETS, ...YOOGIS_TARGETS];
+export const ALL_SCRAPE_TARGETS = [
+    ...HUNTSTREET_TARGETS,
+    ...ZETABAGS_TARGETS,
+    ...BANANANINA_TARGETS,
+    ...YOOGIS_TARGETS,
+    ...ZZER_TARGETS,
+];
 
 export function getTargetsForSite(siteName) {
-    return ALL_SCRAPE_TARGETS.filter((t) => t.site === siteName);
+    return sortTargetsForAdmin(ALL_SCRAPE_TARGETS.filter((t) => t.site === siteName));
 }
 
 export function getScrapeTargetById(id) {

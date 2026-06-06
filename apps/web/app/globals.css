@@ -76,6 +76,74 @@ body {
     transition: all 0.3s;
 }
 
+.nav-brand-block {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.store-logo {
+    height: 54px;
+    width: auto;
+    max-width: min(280px, 42vw);
+    object-fit: contain;
+    display: block;
+}
+
+.nav-end {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.nav-social {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.55);
+}
+
+.nav-social-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: var(--text-muted);
+    background: transparent;
+    text-decoration: none;
+    transition: color 0.2s, background 0.2s, transform 0.2s;
+}
+
+.nav-social-link::after {
+    display: none !important;
+}
+
+.nav-social-link:hover {
+    transform: translateY(-1px);
+}
+
+.nav-social-link--instagram:hover {
+    color: #e1306c;
+    background: rgba(225, 48, 108, 0.1);
+}
+
+.nav-social-link--facebook:hover {
+    color: #1877f2;
+    background: rgba(24, 119, 242, 0.1);
+}
+
 .logo {
     font-family: 'Playfair Display', serif;
     font-size: 1.8rem;
@@ -93,6 +161,7 @@ body {
     line-height: 0;
 }
 
+.nav-actions a,
 .nav-links a {
     color: var(--text-muted);
     text-decoration: none;
@@ -105,6 +174,7 @@ body {
     position: relative;
     padding-bottom: 4px;
 }
+.nav-actions a::after,
 .nav-links a::after {
     content: '';
     position: absolute;
@@ -116,12 +186,17 @@ body {
     transition: all 0.3s ease;
     transform: translateX(-50%);
 }
+.nav-actions a:hover,
 .nav-links a:hover {
     color: var(--text-main);
 }
-.nav-links a:hover::after, .nav-links a.active::after {
+.nav-actions a:hover::after,
+.nav-actions a.active::after,
+.nav-links a:hover::after,
+.nav-links a.active::after {
     width: 80%;
 }
+.nav-actions a.active,
 .nav-links a.active {
     color: var(--text-main);
     font-weight: 600;
@@ -1034,6 +1109,17 @@ body {
     padding: 1rem;
 }
 
+.settings-social-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 72px;
+    background: #fdfdfd;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+}
+
 @media (max-width: 900px) {
     .settings-layout {
         grid-template-columns: 1fr;
@@ -1369,8 +1455,18 @@ body {
 @media (max-width: 768px) {
     .minimal-nav { padding: 1rem 5%; }
     .nav-link-desktop { display: none; }
-    .nav-links { gap: 0.35rem; }
+    .nav-end { gap: 0.65rem; }
+    .nav-actions { gap: 0.35rem; }
+    .nav-actions a,
     .nav-links a { margin: 0; font-size: 0.72rem; letter-spacing: 0.5px; }
+    .nav-social {
+        padding: 0.25rem 0.45rem;
+        gap: 0.2rem;
+    }
+    .nav-social-link {
+        width: 28px;
+        height: 28px;
+    }
     .nav-action {
         padding: 0.45rem 0.65rem;
         border: 1px solid var(--border);
@@ -1380,6 +1476,8 @@ body {
     .nav-action-icon { display: inline; }
     .nav-action::after { display: none; }
     .logo { font-size: 1.4rem; letter-spacing: 1px; }
+    .store-logo { height: 44px; max-width: 52vw; }
+    .nav-brand-block { gap: 0.65rem; }
     .logo span { font-size: 1.7rem; }
 
     .minimal-hero { margin-top: 64px; padding: 3.5rem 5% 2.5rem; }
